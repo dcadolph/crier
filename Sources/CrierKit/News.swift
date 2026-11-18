@@ -30,8 +30,8 @@ public typealias Fetch = @Sendable (URL) async throws -> Data
 @MainActor
 @Observable
 public final class News {
-    // headlines are every event from the general feeds, most important first, pop culture and sports
-    // already screened out unless major.
+    // headlines are every event from the topic feeds, ranked by outlet count weighed by the reader's interest,
+    // with major only topics held back until a story is major.
     public private(set) var headlines: [Headline] = []
     // entries are the ticker's items: the top general headlines with each follow's newest stories mixed in.
     public private(set) var entries: [Entry] = []
@@ -151,35 +151,31 @@ public final class News {
             return now.timeIntervalSince(published) < Self.freshness
         }
         var general: [Story] = []
-        var muted: [Story] = []
         var followed: [String: [Story]] = [:]
         for (id, stories) in cache {
             guard let source = byID[id] else {
                 continue
             }
             let kept = stories.filter(fresh)
-            switch source.topic {
-            case .entertainment, .sports:
-                muted += kept
-            case .follow:
+            if source.topic == .follow {
                 followed[id] = kept
-            default:
+            } else {
                 general += kept
             }
         }
-        let mutedWords = muted.map { Coverage.keywords($0.title) }
-        let mutedLinks = Set(muted.map(\.id))
         let rules = settings.alerts
-        headlines = Coverage.group(general).filter { headline in
-            if Alerts.major(headline, rules: rules) {
-                return true
-            }
-            let screened = headline.stories.contains { story in
-                mutedLinks.contains(story.id)
-                    || mutedWords.contains { Coverage.same($0, Coverage.keywords(story.title)) }
-            }
-            return !screened
+        let weighed = Coverage.group(general).enumerated().map { index, headline in
+            var headline = headline
+            headline.interest = interest(headline, sources: byID)
+            return (index: index, headline: headline)
         }
+        headlines = weighed.filter { $0.headline.interest != .majorOnly || Alerts.major($0.headline, rules: rules) }
+            .sorted { a, b in
+                let x = Self.score(a.headline)
+                let y = Self.score(b.headline)
+                return x != y ? x > y : a.index < b.index
+            }
+            .map(\.headline)
         var items = headlines.prefix(Self.maxEntries).map {
             Entry(headline: $0, tag: nil, major: Alerts.major($0, rules: rules))
         }
@@ -204,6 +200,24 @@ public final class News {
             }
         }
         entries = items
+    }
+
+    // interest returns how much the reader wants a headline: the interest held by most of its stories, the
+    // lower one on a tie, leaving out the general top story feeds unless they are all that carry it.
+    func interest(_ headline: Headline, sources: [String: Source]) -> Interest {
+        var counts: [Interest: Int] = [:]
+        for story in headline.stories {
+            if let topic = sources[story.sourceID]?.topic, topic != .top {
+                counts[settings.level(topic), default: 0] += 1
+            }
+        }
+        let most = counts.max { a, b in a.value != b.value ? a.value < b.value : a.key > b.key }
+        return most?.key ?? settings.level(.top)
+    }
+
+    // score ranks a headline: its outlet count weighed by the reader's interest in its topic.
+    static func score(_ headline: Headline) -> Double {
+        Double(headline.outlets.count) * headline.interest.weight
     }
 
     // reason says in plain words why a feed could not be read.

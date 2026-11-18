@@ -19,9 +19,10 @@ public enum Alerts {
     // memory is how long a sent alert keeps its event from alerting again.
     public static let memory: TimeInterval = 48 * 3600
 
-    // major reports whether enough separate outlets carry a headline.
+    // major reports whether enough separate outlets carry a headline. A topic the reader wants less of needs
+    // twice as many.
     public static func major(_ headline: Headline, rules: AlertRules) -> Bool {
-        headline.outlets.count >= rules.minOutlets
+        headline.outlets.count >= rules.minOutlets * headline.interest.majorFactor
     }
 
     // quiet reports whether the time falls inside quiet hours, which may wrap past midnight.

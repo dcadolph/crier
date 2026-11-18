@@ -17,6 +17,20 @@ struct AlertsTests {
         #expect(!Alerts.major(headline("Small story about the senate vote", outlets: 5), rules: rules))
     }
 
+    // majorLessNeedsTwice asks twice the outlets of a topic the reader wants less of.
+    @Test func majorLessNeedsTwice() {
+        let rules = AlertRules()
+        var game = headline("Studio delays open world sequel again", outlets: 11)
+        game.interest = .less
+        #expect(!Alerts.major(game, rules: rules))
+        game = headline("Studio delays open world sequel again", outlets: 12)
+        game.interest = .less
+        #expect(Alerts.major(game, rules: rules))
+        var sport = headline("Underdog wins the championship final", outlets: 6)
+        sport.interest = .majorOnly
+        #expect(Alerts.major(sport, rules: rules))
+    }
+
     // quiet handles hours that wrap past midnight, hours within one day, and no quiet hours.
     @Test func quiet() {
         var rules = AlertRules()

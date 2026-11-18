@@ -1,13 +1,16 @@
 import Foundation
 
-// Topic is a group of feeds the reader can turn on or off.
-public enum Topic: String, CaseIterable, Codable, Sendable {
+// Topic is a group of feeds the reader can weigh, from off to more.
+public enum Topic: String, CaseIterable, Codable, Sendable, Comparable {
     case top
     case world
     case us
     case business
     case tech
     case science
+    case movies
+    case music
+    case games
     case entertainment
     case sports
     case follow
@@ -21,20 +24,86 @@ public enum Topic: String, CaseIterable, Codable, Sendable {
         case .business: "Economy and business"
         case .tech: "Tech and software"
         case .science: "Science and space"
-        case .entertainment: "Entertainment"
+        case .movies: "Movies and TV"
+        case .music: "Music"
+        case .games: "Video games"
+        case .entertainment: "Pop culture and celebrity"
         case .sports: "Sports"
         case .follow: "Following"
         }
     }
 
-    // muted reports whether the topic only screens stories out. Its stories never reach the ticker unless
-    // the event is major.
-    public var muted: Bool {
-        self == .entertainment || self == .sports
+    // choosable lists the topics the reader can weigh, in the order settings shows them.
+    public static let choosable: [Topic] = allCases.filter { $0 != .follow }
+
+    // < orders topics as settings lists them.
+    public static func < (a: Topic, b: Topic) -> Bool {
+        allCases.firstIndex(of: a)! < allCases.firstIndex(of: b)!
+    }
+}
+
+// Interest is how much of a topic the reader wants. A headline takes the interest held by most of its stories,
+// the lower one on a tie, not counting the general top story feeds. A game story that one tech feed picks up
+// still counts as games, and a tech story that one game site picks up still counts as tech.
+public enum Interest: String, CaseIterable, Codable, Sendable, Comparable {
+    // off stops reading the topic's feeds.
+    case off
+    // majorOnly hides the topic's stories, and stories like them elsewhere, until they are major.
+    case majorOnly
+    // less shows the topic's stories lower down, and needs twice the outlets to call one major.
+    case less
+    // normal ranks the topic's stories by outlet count alone.
+    case normal
+    // more ranks the topic's stories higher.
+    case more
+
+    // title names the level in settings.
+    public var title: String {
+        switch self {
+        case .off: "Off"
+        case .majorOnly: "Major only"
+        case .less: "Less"
+        case .normal: "Normal"
+        case .more: "More"
+        }
     }
 
-    // choosable lists the topics the reader can turn on or off.
-    public static let choosable: [Topic] = [.top, .world, .us, .business, .tech, .science]
+    // help explains the level in a tooltip.
+    public var help: String {
+        switch self {
+        case .off: "Crier stops reading these feeds."
+        case .majorOnly: "Hidden, along with stories like them from other feeds, until a story is major."
+        case .less: "Shown lower down. A story needs twice the usual outlets to count as major."
+        case .normal: "Ranked by how many outlets carry each story."
+        case .more: "Ranked higher, as if half again as many outlets carried each story."
+        }
+    }
+
+    // weight scales a headline's outlet count when ranking.
+    public var weight: Double {
+        switch self {
+        case .off, .less: 0.5
+        case .majorOnly, .normal: 1
+        case .more: 1.5
+        }
+    }
+
+    // majorFactor multiplies the outlets a headline needs to count as major.
+    public var majorFactor: Int {
+        self == .less ? 2 : 1
+    }
+
+    // < orders levels from off to more.
+    public static func < (a: Interest, b: Interest) -> Bool {
+        allCases.firstIndex(of: a)! < allCases.firstIndex(of: b)!
+    }
+
+    // defaults lean toward world affairs, politics, tech, and science, keep movies, music, and games in the mix
+    // lower down, and hold pop culture and sports back until a story is major.
+    public static let defaults: [Topic: Interest] = [
+        .top: .normal, .world: .more, .us: .more, .business: .normal, .tech: .more, .science: .more,
+        .movies: .less, .music: .less, .games: .less, .entertainment: .majorOnly, .sports: .majorOnly,
+    ]
 }
 
 // Source is one free public news feed.
@@ -82,6 +151,15 @@ public struct Source: Sendable, Hashable, Identifiable {
         google("google-science", path: "/headlines/section/topic/SCIENCE", topic: .science),
         outlet("space", "Space.com", "https://www.space.com/feeds.xml", .science),
         outlet("spacenews", "SpaceNews", "https://spacenews.com/feed/", .science),
+        outlet("variety", "Variety", "https://variety.com/feed/", .movies),
+        outlet("thr", "The Hollywood Reporter", "https://www.hollywoodreporter.com/feed/", .movies),
+        outlet("deadline", "Deadline", "https://deadline.com/feed/", .movies),
+        outlet("billboard", "Billboard", "https://www.billboard.com/feed/", .music),
+        outlet("rollingstone", "Rolling Stone", "https://www.rollingstone.com/music/feed/", .music),
+        outlet("pitchfork", "Pitchfork", "https://pitchfork.com/feed/feed-news/rss", .music),
+        outlet("ign", "IGN", "https://feeds.feedburner.com/ign/news", .games),
+        outlet("gamespot", "GameSpot", "https://www.gamespot.com/feeds/news/", .games),
+        outlet("kotaku", "Kotaku", "https://kotaku.com/feed", .games),
         google("google-entertainment", path: "/headlines/section/topic/ENTERTAINMENT", topic: .entertainment),
         google("google-sports", path: "/headlines/section/topic/SPORTS", topic: .sports),
     ]
@@ -94,10 +172,9 @@ public struct Source: Sendable, Hashable, Identifiable {
         return topic == .top ? "Google News" : "Google News \(topic.title)"
     }
 
-    // sources returns the catalog feeds for the given topics, plus the muted feeds that screen out pop
-    // culture and sports, plus one search feed per follow.
-    public static func sources(for topics: Set<Topic>, follows: [Follow] = []) -> [Source] {
-        catalog.filter { topics.contains($0.topic) || $0.topic.muted } + follows.compactMap(\.source)
+    // sources returns the catalog feeds for every topic not turned off, plus one search feed per follow.
+    public static func sources(for interest: [Topic: Interest], follows: [Follow] = []) -> [Source] {
+        catalog.filter { (interest[$0.topic] ?? .normal) != .off } + follows.compactMap(\.source)
     }
 
     // search builds a Google News search feed for a query, limited to the last two days.

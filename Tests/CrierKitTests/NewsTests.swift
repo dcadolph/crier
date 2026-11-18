@@ -20,7 +20,10 @@ struct NewsTests {
     // headline.
     @Test func refresh() async {
         var settings = Settings()
-        settings.topics = [.top]
+        settings.interest = Dictionary(uniqueKeysWithValues: Topic.choosable.map { ($0, Interest.off) })
+        settings.interest[.top] = .normal
+        settings.interest[.entertainment] = .majorOnly
+        settings.interest[.sports] = .majorOnly
         settings.disabledSources = Set(Source.catalog.filter { $0.topic == .top && $0.id != "google-top" }.map(\.id))
         settings.follows = [Follow(name: "49ers", query: "\"San Francisco 49ers\"")]
         let fetch: Fetch = { url in
@@ -58,5 +61,53 @@ struct NewsTests {
         #expect(first == true)
         await news.refresh()
         #expect(first == false)
+    }
+
+    // interestRanks weighs outlet counts by topic: a tech story wanted more beats a wider game story wanted
+    // less, a game story carried by a top feed still counts as games, and a tech story one game site picks up
+    // still counts as tech.
+    @Test func interestRanks() async {
+        var settings = Settings()
+        settings.interest = Dictionary(uniqueKeysWithValues: Topic.choosable.map { ($0, Interest.off) })
+        settings.interest[.top] = .normal
+        settings.interest[.tech] = .more
+        settings.interest[.games] = .less
+        let kept: Set<String> = ["google-top", "npr", "ars", "verge", "ign", "gamespot"]
+        settings.disabledSources = Set(Source.catalog.map(\.id).filter { !kept.contains($0) })
+        settings.follows = []
+        let fetch: Fetch = { url in
+            let text = url.absoluteString
+            if text.contains("npr") {
+                return Self.rss(["Senate passes sweeping budget bill"], outlet: "NPR")
+            }
+            if text.contains("arstechnica") {
+                return Self.rss(["Chip maker unveils faster laptop processor"], outlet: "Ars")
+            }
+            if text.contains("theverge") {
+                return Self.rss(["Chip maker unveils faster laptop processor"], outlet: "Verge")
+            }
+            if text.contains("ign") {
+                return Self.rss(
+                    ["Console maker reveals new handheld", "Chip maker unveils faster laptop processor"], outlet: "IGN")
+            }
+            if text.contains("gamespot") {
+                return Self.rss(["Console maker reveals new handheld"], outlet: "GameSpot")
+            }
+            return Self.rss(
+                [
+                    "Senate passes sweeping budget bill", "Console maker reveals new handheld",
+                    "Chip maker unveils faster laptop processor",
+                ], outlet: "Wire")
+        }
+        let news = News(settings: settings, fetch: fetch)
+        await news.refresh()
+        #expect(news.failures.isEmpty)
+        #expect(
+            news.headlines.map(\.lead.title) == [
+                "Chip maker unveils faster laptop processor", "Senate passes sweeping budget bill",
+                "Console maker reveals new handheld",
+            ])
+        #expect(news.headlines.map(\.interest) == [.more, .normal, .less])
+        #expect(news.headlines.map(\.outlets.count) == [4, 2, 3])
     }
 }

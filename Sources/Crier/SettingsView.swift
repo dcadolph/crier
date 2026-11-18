@@ -91,41 +91,52 @@ struct SettingsView: View {
     private var tickerPage: some View {
         Form {
             Toggle("Show the ticker", isOn: $store.settings.tickerOn)
+                .help("Scroll headlines across the top of the screen. The bell menu works either way.")
             Picker("Place", selection: $store.settings.place) {
                 ForEach(Place.allCases, id: \.self) { place in
                     Text(place.title).tag(place)
                 }
             }
+            .help(
+                "In the menu bar fits the ticker into the bar's empty middle. Below the menu bar draws a full "
+                    + "width strip under it, which covers the top of windows.")
             if store.settings.place == .menuBar {
                 Picker("Position", selection: $store.settings.position) {
                     ForEach(Position.allCases, id: \.self) { position in
                         Text(position.title).tag(position)
                     }
                 }
+                .help("Where along the menu bar the ticker starts. Left of center leaves the middle to a clock.")
                 Toggle("Fill the open bar", isOn: $store.settings.fill)
+                    .help("Stretch the ticker across all the empty menu bar on its side, instead of a fixed width.")
                 if !store.settings.fill {
                     LabeledContent("Width") {
                         Slider(value: $store.settings.width, in: 240...1200, step: 20)
                         Text("\(Int(store.settings.width)) pt").monospacedDigit().frame(width: 60, alignment: .trailing)
                     }
+                    .help("How wide the ticker is, in points. It shrinks when the open bar is narrower.")
                 }
                 LabeledContent("Offset") {
                     Slider(value: $store.settings.offset, in: -800...800, step: 10)
                     Text("\(Int(store.settings.offset)) pt").monospacedDigit().frame(width: 60, alignment: .trailing)
                 }
+                .help("Nudge the ticker right, or left below zero, from its position. It still steps around the notch.")
                 if trusted {
                     LabeledContent("App menus", value: "Tracked")
+                        .help("Crier reads where each app's menus end, so the ticker never covers them.")
                 } else {
                     LabeledContent("Room for app menus") {
                         Slider(value: $store.settings.menuRoom, in: 200...2000, step: 20)
                         Text("\(Int(store.settings.menuRoom)) pt").monospacedDigit()
                             .frame(width: 60, alignment: .trailing)
                     }
+                    .help("How much of the bar's left end to keep clear for app menus, since Crier cannot see them.")
                     LabeledContent("Track the menus exactly") {
                         Button("Allow Accessibility…") {
                             BarRoom.askForTrust()
                         }
                     }
+                    .help("Let Crier read where each app's menus end, so the room above is measured, not guessed.")
                 }
                 Text("The ticker steps around the notch and Fuginaut's clock, and stays clear of the status icons.")
                     .font(.callout)
@@ -141,13 +152,18 @@ struct SettingsView: View {
                 }
                 Text("\(Int(store.settings.speed)) pt/s").monospacedDigit().frame(width: 60, alignment: .trailing)
             }
+            .help("How fast headlines scroll, in points per second. The news band's ticker uses it too.")
             Toggle("Match the menu bar's text color", isOn: matchBarBinding)
+                .help("Draw headlines in the menu bar's own text color, which follows the wallpaper and theme.")
             if let color = store.settings.tickerColor {
                 ColorPicker(
                     "Text color",
-                    selection: Binding(get: { color.color }, set: { store.settings.tickerColor = StoredColor($0) }))
+                    selection: Binding(get: { color.color }, set: { store.settings.tickerColor = StoredColor($0) })
+                )
+                .help("The color of the ticker's headlines.")
             }
             Toggle("Show on every display", isOn: $store.settings.allDisplays)
+                .help("Put a ticker on each display's menu bar, not only the main one.")
             Text("Hover over the ticker to hold it still. Click a headline to open it.")
                 .font(.callout)
                 .foregroundStyle(.secondary)
@@ -161,33 +177,31 @@ struct SettingsView: View {
         }
     }
 
-    // sourcesPage turns topics and the single feeds under them on and off.
+    // sourcesPage sets how much of each topic to show and turns single feeds on and off.
     private var sourcesPage: some View {
         Form {
+            Text(
+                "More ranks a topic's stories higher and Less lower. Major only holds them back until enough "
+                    + "outlets carry a story. Hover over a level for more."
+            )
+            .font(.callout)
+            .foregroundStyle(.secondary)
             ForEach(Topic.choosable, id: \.self) { topic in
                 Section {
-                    Toggle(isOn: topicBinding(topic)) {
+                    Picker(selection: interestBinding(topic)) {
+                        ForEach(Interest.allCases, id: \.self) { level in
+                            Text(level.title).tag(level)
+                        }
+                    } label: {
                         Text(topic.title).fontWeight(.semibold)
                     }
+                    .help(store.settings.level(topic).help)
                     ForEach(Source.catalog.filter { $0.topic == topic }) { source in
                         sourceToggle(source)
                             .padding(.leading, 16)
-                            .disabled(!store.settings.topics.contains(topic))
+                            .disabled(store.settings.level(topic) == .off)
                     }
                 }
-            }
-            Section {
-                ForEach(Source.catalog.filter(\.topic.muted)) { source in
-                    sourceToggle(source)
-                }
-            } header: {
-                Text("Screening")
-            } footer: {
-                Text(
-                    "These feeds never fill the ticker. They keep entertainment and sports out of it unless a "
-                        + "story is major. Turn one off to stop screening its stories."
-                )
-                .foregroundStyle(.secondary)
             }
         }
         .formStyle(.grouped)
@@ -201,17 +215,22 @@ struct SettingsView: View {
                     Text(look.title).tag(look)
                 }
             }
+            .help("The news band's colors. Match follows light and dark mode, Ink and Paper stay fixed.")
             BandSample(theme: store.settings.theme)
             if store.settings.look == .custom {
                 ColorPicker("Background", selection: colorBinding(\.background), supportsOpacity: false)
+                    .help("Fills the band behind the stories.")
                 ColorPicker("Text", selection: colorBinding(\.text), supportsOpacity: false)
+                    .help("Draws headlines, outlet names, and rules.")
                 ColorPicker("Major stories", selection: colorBinding(\.accent), supportsOpacity: false)
+                    .help("Marks major stories and fills the line that counts down to the next page.")
             }
             LabeledContent("Next page every") {
                 Slider(value: $store.settings.rotationSeconds, in: 10...120, step: 5)
                 Text("\(Int(store.settings.rotationSeconds)) s").monospacedDigit().frame(
                     width: 60, alignment: .trailing)
             }
+            .help("How long each page of top stories stays up before the next. Hovering holds the page.")
             Text("The band tops Crier's window, open from the bell menu. Changes show there right away.")
                 .font(.callout)
                 .foregroundStyle(.secondary)
@@ -227,19 +246,23 @@ struct SettingsView: View {
                     HStack {
                         TextField("Name", text: $store.settings.follows[index].name)
                             .frame(width: 110)
+                            .help("The tag shown before this follow's headlines. A headline must contain it to show.")
                         TextField("Search", text: $store.settings.follows[index].query)
+                            .help("The Google News search. Put a phrase in quotes for an exact match.")
                         Button {
                             store.settings.follows.remove(at: index)
                         } label: {
                             Image(systemName: "minus.circle")
                         }
                         .buttonStyle(.borderless)
+                        .help("Stop following this.")
                     }
                     .labelsHidden()
                 }
                 Button("Add Follow") {
                     store.settings.follows.append(Follow(name: "", query: ""))
                 }
+                .help("Follow a team, person, or subject. Its newest stories join the ticker.")
             } footer: {
                 Text(
                     "Each follow searches Google News. Put a phrase in quotes for an exact match. "
@@ -260,13 +283,16 @@ struct SettingsView: View {
                         HStack {
                             TextField("Name", text: $store.settings.feeds[index].name)
                                 .frame(width: 110)
+                                .help("The outlet name shown with this feed's stories.")
                             TextField("https://example.com/feed.xml", text: $store.settings.feeds[index].url)
+                                .help("The feed's RSS or Atom address.")
                             Button {
                                 store.settings.feeds.remove(at: index)
                             } label: {
                                 Image(systemName: "minus.circle")
                             }
                             .buttonStyle(.borderless)
+                            .help("Stop reading this feed.")
                         }
                         .labelsHidden()
                         if let reason = failure(store.settings.feeds[index]) {
@@ -277,6 +303,7 @@ struct SettingsView: View {
                 Button("Add Feed") {
                     store.settings.feeds.append(CustomFeed(name: "", url: ""))
                 }
+                .help("Add any RSS or Atom feed, such as one you curate in another app.")
             } footer: {
                 Text("Any RSS or Atom address works. Its stories rank alongside the top stories.")
                     .foregroundStyle(.secondary)
@@ -289,25 +316,31 @@ struct SettingsView: View {
     private var alertsPage: some View {
         Form {
             Toggle("Alert me to major stories", isOn: $store.settings.alerts.enabled)
+                .help("Send a notification when a story turns major. Clicking it opens the story.")
             Stepper(value: $store.settings.alerts.minOutlets, in: 2...15) {
                 LabeledContent("Major at", value: "\(store.settings.alerts.minOutlets) outlets")
             }
+            .help("How many separate outlets must carry a story to count as major. Less topics need twice this.")
             Stepper(value: $store.settings.alerts.dailyCap, in: 1...20) {
                 LabeledContent("At most", value: "\(store.settings.alerts.dailyCap) a day")
             }
+            .help("The most alerts Crier sends in one day. Majors past the cap still get their red dot.")
             Picker("Quiet from", selection: $store.settings.alerts.quietStart) {
                 ForEach(0..<24, id: \.self) { hour in
                     Text(hourText(hour)).tag(hour)
                 }
             }
+            .help("No alerts from this hour. Set both hours the same to alert around the clock.")
             Picker("Quiet until", selection: $store.settings.alerts.quietEnd) {
                 ForEach(0..<24, id: \.self) { hour in
                     Text(hourText(hour)).tag(hour)
                 }
             }
+            .help("Alerts start again at this hour.")
             Stepper(value: $store.settings.alerts.maxAgeHours, in: 1...24, step: 1) {
                 LabeledContent("Skip stories older than", value: "\(Int(store.settings.alerts.maxAgeHours)) h")
             }
+            .help("A story that first broke longer ago than this never alerts, however big it grows.")
             Text("A story is major when that many separate outlets carry it. Majors get a red dot in the ticker.")
                 .font(.callout)
                 .foregroundStyle(.secondary)
@@ -322,6 +355,7 @@ struct SettingsView: View {
                 "Open at login",
                 isOn: Binding(get: { loginItem.isEnabled }, set: { loginItem.setEnabled($0) })
             )
+            .help("Start Crier when you log in to this Mac.")
             if loginItem.needsApproval {
                 Text("Allow Crier in System Settings, General, Login Items.")
                     .foregroundStyle(.secondary)
@@ -332,20 +366,24 @@ struct SettingsView: View {
             Stepper(value: $store.settings.refreshMinutes, in: 1...60, step: 1) {
                 LabeledContent("Read the news every", value: "\(Int(store.settings.refreshMinutes)) min")
             }
+            .help("How often Crier reads every feed.")
             LabeledContent("Last read", value: news.updated?.formatted(date: .omitted, time: .shortened) ?? "Not yet")
             LabeledContent("Headlines", value: "\(news.headlines.count)")
             if !news.failures.isEmpty {
                 LabeledContent("Failed feeds", value: failedNames)
+                    .help("The Sources and Feeds tabs explain each failure.")
             }
             HStack {
                 Button("Refresh Now") {
                     Task { await news.refresh() }
                 }
                 .disabled(news.refreshing)
+                .help("Read every feed now.")
                 Spacer()
                 Button("Restore Defaults") {
                     store.reset()
                 }
+                .help("Put every setting back the way Crier first came. Follows and your own feeds are cleared.")
                 Button("Quit Crier") {
                     NSApp.terminate(nil)
                 }
@@ -375,6 +413,7 @@ struct SettingsView: View {
                 }
             }
         }
+        .help("Reads \(source.url.absoluteString)")
     }
 
     // matchBarBinding switches the ticker between the menu bar's text color and a color of its own.
@@ -395,17 +434,11 @@ struct SettingsView: View {
         )
     }
 
-    // topicBinding switches one topic on or off.
-    private func topicBinding(_ topic: Topic) -> Binding<Bool> {
+    // interestBinding sets how much of one topic to show.
+    private func interestBinding(_ topic: Topic) -> Binding<Interest> {
         Binding(
-            get: { store.settings.topics.contains(topic) },
-            set: { on in
-                if on {
-                    store.settings.topics.insert(topic)
-                } else {
-                    store.settings.topics.remove(topic)
-                }
-            }
+            get: { store.settings.level(topic) },
+            set: { store.settings.interest[topic] = $0 }
         )
     }
 

@@ -170,8 +170,8 @@ public struct Settings: Codable, Sendable, Equatable {
     public var speed = 40.0
     // allDisplays shows the ticker on every display instead of only the main one.
     public var allDisplays = false
-    // topics are the topic feeds that are read.
-    public var topics: Set<Topic> = Set(Topic.choosable)
+    // interest is how much of each topic the reader wants. A topic missing from it counts as normal.
+    public var interest = Interest.defaults
     // follows are the teams and subjects kept in the ticker.
     public var follows = Follow.defaults
     // feeds are the reader's own feeds.
@@ -196,8 +196,13 @@ public struct Settings: Codable, Sendable, Equatable {
 
     // sources returns every feed these settings read.
     public var sources: [Source] {
-        Source.sources(for: topics, follows: follows).filter { !disabledSources.contains($0.id) }
+        Source.sources(for: interest, follows: follows).filter { !disabledSources.contains($0.id) }
             + feeds.compactMap(\.source)
+    }
+
+    // level returns how much of a topic the reader wants.
+    public func level(_ topic: Topic) -> Interest {
+        interest[topic] ?? .normal
     }
 
     // theme returns the news band's colors, or nil to follow light and dark mode.
@@ -222,7 +227,7 @@ public struct Settings: Codable, Sendable, Equatable {
 extension Settings {
     // CodingKeys names the stored fields.
     private enum CodingKeys: String, CodingKey {
-        case tickerOn, place, width, offset, speed, allDisplays, topics, follows, feeds, refreshMinutes, alerts
+        case tickerOn, place, width, offset, speed, allDisplays, interest, follows, feeds, refreshMinutes, alerts
         case disabledSources, tickerColor, look, customLook, rotationSeconds, position, fill, menuRoom
     }
 
@@ -236,8 +241,12 @@ extension Settings {
         offset = try c.decodeIfPresent(Double.self, forKey: .offset) ?? offset
         speed = try c.decodeIfPresent(Double.self, forKey: .speed) ?? speed
         allDisplays = try c.decodeIfPresent(Bool.self, forKey: .allDisplays) ?? allDisplays
-        if let names = try c.decodeIfPresent([String].self, forKey: .topics) {
-            topics = Set(names.compactMap(Topic.init(rawValue:)))
+        if let stored = try c.decodeIfPresent([String: String].self, forKey: .interest) {
+            for (name, level) in stored {
+                if let topic = Topic(rawValue: name), let level = Interest(rawValue: level) {
+                    interest[topic] = level
+                }
+            }
         }
         follows = try c.decodeIfPresent([Follow].self, forKey: .follows) ?? follows
         feeds = try c.decodeIfPresent([CustomFeed].self, forKey: .feeds) ?? feeds
@@ -253,7 +262,7 @@ extension Settings {
         menuRoom = try c.decodeIfPresent(Double.self, forKey: .menuRoom) ?? menuRoom
     }
 
-    // encode stores every field, with topics as a sorted list of names.
+    // encode stores every field, with interest keyed by topic name.
     public func encode(to encoder: Encoder) throws {
         var c = encoder.container(keyedBy: CodingKeys.self)
         try c.encode(tickerOn, forKey: .tickerOn)
@@ -262,7 +271,8 @@ extension Settings {
         try c.encode(offset, forKey: .offset)
         try c.encode(speed, forKey: .speed)
         try c.encode(allDisplays, forKey: .allDisplays)
-        try c.encode(topics.map(\.rawValue).sorted(), forKey: .topics)
+        try c.encode(
+            Dictionary(uniqueKeysWithValues: interest.map { ($0.key.rawValue, $0.value.rawValue) }), forKey: .interest)
         try c.encode(follows, forKey: .follows)
         try c.encode(feeds, forKey: .feeds)
         try c.encode(refreshMinutes, forKey: .refreshMinutes)

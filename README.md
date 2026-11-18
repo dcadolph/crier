@@ -11,13 +11,16 @@ Crier is free. It is a work in progress.
 
 ## What it does
 
-- Reads about twenty news feeds across politics, world affairs, economics, technology, and science, plus
-  any RSS or Atom feeds you add.
-- Groups the same story from different outlets and ranks stories by how many outlets carry them.
-- Calls a story major when six or more outlets carry it. Major stories get a red dot, and the newest ones
-  can send a notification, with quiet hours, a daily cap, and no repeats.
-- Keeps pop culture and sports out of the ticker unless a story is major, and keeps the teams and topics
-  you follow in it.
+- Reads about thirty news feeds across politics, world affairs, economics, technology, science, movies,
+  music, video games, pop culture, and sports, plus any RSS or Atom feeds you add.
+- Groups the same story from different outlets and ranks stories by how many outlets carry them, weighed
+  by how much of each topic you want. Each topic is set to More, Normal, Less, Major only, or Off. Out of
+  the box it leans toward world affairs, politics, tech, and science, keeps movies, music, and games in
+  the mix lower down, and holds pop culture and sports back until a story is major.
+- Calls a story major when six or more outlets carry it, or twelve for a topic set to Less. Major
+  stories get a red dot, and the newest ones can send a notification, with quiet hours, a daily cap,
+  and no repeats.
+- Keeps the teams and subjects you follow in the ticker.
 - Places the ticker at the center, left of center, or right of center of the menu bar, or fills the open
   bar. It steps around the notch and around the clock from Fuginaut, and stays clear of the status icons.
 - Opens a window with the top stories in rotating columns over the full headline list.
@@ -26,7 +29,29 @@ Hover over the ticker to hold it still. Click a headline to open it.
 
 ## Install
 
-Crier needs macOS 14 or later. Build it from source:
+Crier needs macOS 14 or later. With Homebrew:
+
+```sh
+brew install --cask dcadolph/tap/crier
+```
+
+Or download `crier_macos_universal.dmg` from the
+[latest release](https://github.com/dcadolph/crier/releases/latest), open it, and drag Crier to
+Applications. Releases are signed with a Developer ID and notarized by Apple.
+
+## Verify a download
+
+Each release carries `SHA256SUMS` with a keyless cosign signature and a build provenance attestation.
+
+```sh
+cosign verify-blob SHA256SUMS --signature SHA256SUMS.sig --certificate SHA256SUMS.pem \
+  --certificate-identity-regexp '^https://github.com/dcadolph/crier/\.github/workflows/release\.yml@refs/tags/v' \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com
+shasum -a 256 -c SHA256SUMS --ignore-missing
+gh attestation verify crier_macos_universal.dmg --repo dcadolph/crier
+```
+
+## Build from source
 
 ```sh
 make run
@@ -36,9 +61,10 @@ make run
 
 ## Settings
 
-Open Settings from the bell in the menu bar. The ticker's place, position, width, speed, and color, the
-topics and single feeds, the colors of the news window, followed teams, your own feeds, and alert rules
-all apply right away.
+Open Settings from the bell in the menu bar. The ticker's place, position, width, speed, and color, how
+much of each topic you want and which single feeds to read, the colors of the news window, followed
+teams, your own feeds, and alert rules all apply right away. Hover over any control to see what it
+changes. A feed that fails to load names the reason under its name.
 
 With Accessibility permission, Crier reads where the frontmost app's menus end, so a ticker that fills
 the bar never covers them. Without it, Crier keeps a fixed amount of room for the menus, which you can
