@@ -47,7 +47,7 @@ public final class News {
 
     // updated is when the last refresh finished.
     public private(set) var updated: Date?
-    // failures maps a feed id to the reason its last read failed.
+    // failures maps a feed id to why its last read failed, in plain words.
     public private(set) var failures: [String: String] = [:]
     // refreshing reports whether a refresh is running.
     public private(set) var refreshing = false
@@ -129,7 +129,7 @@ public final class News {
             case .success(let stories):
                 cache[source.id] = stories
             case .failure(let error):
-                failed[source.id] = String(describing: error)
+                failed[source.id] = Self.reason(error)
             }
         }
         let ids = Set(sources.map(\.id))
@@ -204,6 +204,33 @@ public final class News {
             }
         }
         entries = items
+    }
+
+    // reason says in plain words why a feed could not be read.
+    public nonisolated static func reason(_ error: Error) -> String {
+        switch error {
+        case FeedError.status(let code):
+            return "The server answered with status \(code) instead of the feed."
+        case FeedError.malformed:
+            return "The address answered, but not with an RSS or Atom feed."
+        case let error as URLError:
+            switch error.code {
+            case .appTransportSecurityRequiresSecureConnection:
+                return "The feed sends Crier to a plain http address, which macOS blocks. Use its https address."
+            case .timedOut:
+                return "The feed took longer than 20 seconds to answer."
+            case .notConnectedToInternet, .networkConnectionLost:
+                return "The Mac is offline."
+            case .cannotFindHost, .dnsLookupFailed:
+                return "The feed's server could not be found."
+            case .secureConnectionFailed, .serverCertificateUntrusted, .serverCertificateHasBadDate:
+                return "The feed's secure connection failed."
+            default:
+                return error.localizedDescription
+            }
+        default:
+            return error.localizedDescription
+        }
     }
 
     // download reads a web address with a short timeout and a plain user agent, and refuses any status

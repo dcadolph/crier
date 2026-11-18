@@ -80,7 +80,7 @@ public struct Source: Sendable, Hashable, Identifiable {
         outlet("verge", "The Verge", "https://www.theverge.com/rss/index.xml", .tech),
         outlet("hn", "Hacker News", "https://news.ycombinator.com/rss", .tech),
         google("google-science", path: "/headlines/section/topic/SCIENCE", topic: .science),
-        outlet("space", "Space.com", "https://www.space.com/feeds/all", .science),
+        outlet("space", "Space.com", "https://www.space.com/feeds.xml", .science),
         outlet("spacenews", "SpaceNews", "https://spacenews.com/feed/", .science),
         google("google-entertainment", path: "/headlines/section/topic/ENTERTAINMENT", topic: .entertainment),
         google("google-sports", path: "/headlines/section/topic/SPORTS", topic: .sports),

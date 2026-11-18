@@ -256,23 +256,23 @@ struct SettingsView: View {
         Form {
             Section {
                 ForEach(store.settings.feeds.indices, id: \.self) { index in
-                    HStack {
-                        TextField("Name", text: $store.settings.feeds[index].name)
-                            .frame(width: 110)
-                        TextField("https://example.com/feed.xml", text: $store.settings.feeds[index].url)
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack {
+                            TextField("Name", text: $store.settings.feeds[index].name)
+                                .frame(width: 110)
+                            TextField("https://example.com/feed.xml", text: $store.settings.feeds[index].url)
+                            Button {
+                                store.settings.feeds.remove(at: index)
+                            } label: {
+                                Image(systemName: "minus.circle")
+                            }
+                            .buttonStyle(.borderless)
+                        }
+                        .labelsHidden()
                         if let reason = failure(store.settings.feeds[index]) {
-                            Image(systemName: "exclamationmark.triangle")
-                                .foregroundStyle(.orange)
-                                .help(reason)
+                            FailureNote(reason: reason)
                         }
-                        Button {
-                            store.settings.feeds.remove(at: index)
-                        } label: {
-                            Image(systemName: "minus.circle")
-                        }
-                        .buttonStyle(.borderless)
                     }
-                    .labelsHidden()
                 }
                 Button("Add Feed") {
                     store.settings.feeds.append(CustomFeed(name: "", url: ""))
@@ -335,7 +335,7 @@ struct SettingsView: View {
             LabeledContent("Last read", value: news.updated?.formatted(date: .omitted, time: .shortened) ?? "Not yet")
             LabeledContent("Headlines", value: "\(news.headlines.count)")
             if !news.failures.isEmpty {
-                LabeledContent("Failed feeds", value: news.failures.keys.sorted().joined(separator: ", "))
+                LabeledContent("Failed feeds", value: failedNames)
             }
             HStack {
                 Button("Refresh Now") {
@@ -368,12 +368,10 @@ struct SettingsView: View {
                 }
             )
         ) {
-            HStack(spacing: 6) {
+            VStack(alignment: .leading, spacing: 2) {
                 Text(source.name)
                 if let reason = news.failures[source.id] {
-                    Image(systemName: "exclamationmark.triangle")
-                        .foregroundStyle(.orange)
-                        .help(reason)
+                    FailureNote(reason: reason)
                 }
             }
         }
@@ -411,6 +409,12 @@ struct SettingsView: View {
         )
     }
 
+    // failedNames lists the feeds whose last read failed, by name.
+    private var failedNames: String {
+        let names = Dictionary(store.settings.sources.map { ($0.id, $0.name) }, uniquingKeysWith: { a, _ in a })
+        return news.failures.keys.map { names[$0] ?? $0 }.sorted().joined(separator: ", ")
+    }
+
     // failure returns why a custom feed's last read failed, if it did.
     private func failure(_ feed: CustomFeed) -> String? {
         guard let id = feed.source?.id else {
@@ -423,6 +427,20 @@ struct SettingsView: View {
     private func hourText(_ hour: Int) -> String {
         let date = Calendar.current.date(bySettingHour: hour, minute: 0, second: 0, of: Date()) ?? Date()
         return date.formatted(date: .omitted, time: .shortened)
+    }
+}
+
+// FailureNote explains why a feed's last read failed, in orange under the feed's name.
+struct FailureNote: View {
+    // reason is the failure in plain words.
+    let reason: String
+
+    // body draws the warning sign and the reason.
+    var body: some View {
+        Label(reason, systemImage: "exclamationmark.triangle")
+            .font(.caption)
+            .foregroundStyle(.orange)
+            .fixedSize(horizontal: false, vertical: true)
     }
 }
 

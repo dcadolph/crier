@@ -53,6 +53,7 @@ struct NewsTests {
         #expect(news.entries[3].tag == "49ers")
         #expect(news.entries[3].headline.lead.title == "49ers beat Seahawks in overtime thriller")
         #expect(news.failures.keys.sorted() == ["google-sports"])
+        #expect(news.failures["google-sports"] == "The server answered with status 503 instead of the feed.")
         #expect(news.listed.count == 5)
         #expect(first == true)
         await news.refresh()
