@@ -14,21 +14,26 @@ struct SettingsTests {
     // emptyDecodesDefaults gives every default for an empty object.
     @Test func emptyDecodesDefaults() throws {
         #expect(try decode("{}") == CrierKit.Settings())
+        #expect(CrierKit.Settings().fill)
     }
 
-    // partialKeepsChoices keeps stored choices, defaults the rest, and skips an unknown place or look.
+    // partialKeepsChoices keeps stored choices, defaults the rest, and skips an unknown place, look, topic, or
+    // interest level.
     @Test func partialKeepsChoices() throws {
         let settings = try decode(
-            #"{"speed": 80, "topics": ["tech", "nonsense"], "place": "floating", "look": "neon", "rotationSeconds": 45, "#
-                + #""position": "sideways", "fill": true}"#
+            #"{"speed": 80, "interest": {"tech": "less", "world": "off", "nonsense": "more", "music": "loud"}, "#
+                + #""place": "floating", "look": "neon", "rotationSeconds": 45, "position": "sideways", "fill": false}"#
         )
         #expect(settings.speed == 80)
-        #expect(settings.topics == [.tech])
+        #expect(settings.level(.tech) == .less)
+        #expect(settings.level(.world) == .off)
+        #expect(settings.level(.music) == Interest.defaults[.music])
+        #expect(settings.level(.science) == .more)
         #expect(settings.place == .menuBar)
         #expect(settings.look == .automatic)
         #expect(settings.rotationSeconds == 45)
         #expect(settings.position == .center)
-        #expect(settings.fill)
+        #expect(!settings.fill)
         #expect(settings.menuRoom == 900)
         #expect(settings.follows == Follow.defaults)
     }
@@ -44,16 +49,21 @@ struct SettingsTests {
         settings.feeds = [CustomFeed(name: "Mine", url: "https://example.com/rss")]
         settings.alerts.minOutlets = 9
         settings.position = .leftOfCenter
-        settings.fill = true
+        settings.fill = false
         settings.menuRoom = 640
+        settings.interest[.games] = .more
+        settings.interest[.sports] = .off
         let data = try JSONEncoder().encode(settings)
         #expect(try JSONDecoder().decode(CrierKit.Settings.self, from: data) == settings)
     }
 
-    // sourcesSkipDisabled drops switched off feeds, keeps the screening feeds, and adds follows and own feeds.
+    // sourcesSkipDisabled drops switched off feeds and topics, keeps major only topics, and adds follows and own
+    // feeds.
     @Test func sourcesSkipDisabled() {
         var settings = CrierKit.Settings()
-        settings.topics = [.tech]
+        settings.interest = Dictionary(uniqueKeysWithValues: Topic.choosable.map { ($0, Interest.off) })
+        settings.interest[.tech] = .normal
+        settings.interest[.sports] = .majorOnly
         settings.disabledSources = ["hn"]
         settings.follows = [Follow(name: "Giants", query: "\"San Francisco Giants\"")]
         settings.feeds = [
@@ -64,9 +74,33 @@ struct SettingsTests {
         #expect(!ids.contains("hn"))
         #expect(!ids.contains("npr"))
         #expect(ids.contains("google-sports"))
+        #expect(!ids.contains("google-entertainment"))
+        #expect(!ids.contains("ign"))
         #expect(ids.contains("follow:Giants"))
         #expect(ids.contains("custom:https://example.com/rss"))
         #expect(!ids.contains { $0.contains("nope") })
+    }
+
+    // levelDefaultsNormal counts a topic missing from the map as normal.
+    @Test func levelDefaultsNormal() {
+        var settings = CrierKit.Settings()
+        settings.interest = [:]
+        #expect(settings.level(.games) == .normal)
+        #expect(settings.sources.count == Source.catalog.count + settings.follows.count)
+    }
+
+    // defaultsLean weighs world affairs, politics, tech, and science above the rest.
+    @Test func defaultsLean() {
+        let settings = CrierKit.Settings()
+        for topic in [Topic.world, .us, .tech, .science] {
+            #expect(settings.level(topic) == .more)
+        }
+        for topic in [Topic.movies, .music, .games] {
+            #expect(settings.level(topic) == .less)
+        }
+        #expect(settings.level(.entertainment) == .majorOnly)
+        #expect(settings.level(.sports) == .majorOnly)
+        #expect(Topic.choosable.allSatisfy { Interest.defaults[$0] != nil })
     }
 
     // theme maps each look to band colors.

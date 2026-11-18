@@ -67,6 +67,18 @@ struct CoverageTests {
         #expect(headlines[0].keywords == Coverage.keywords(plain.title))
     }
 
+    // latestIsNewest dates an event by its newest report, so a story that broke yesterday and is still
+    // running reads as fresh.
+    @Test func latestIsNewest() {
+        let old = story("Leaders open the summit in Seoul", outlet: "Wire", hoursAgo: 30)
+        let new = story("Leaders open the summit in Seoul with trade talks", outlet: "Post", hoursAgo: 0.5)
+        let headlines = Coverage.group([old, new])
+        #expect(headlines.count == 1)
+        #expect(headlines[0].first == old.published)
+        #expect(headlines[0].latest == new.published)
+        #expect(headline("Undated story about the harbor", outlets: 1, hoursAgo: 2).latest != nil)
+    }
+
     // groupKeepsRoundupWhenAlone leads with a roundup when no plain title covers the event.
     @Test func groupKeepsRoundupWhenAlone() {
         let roundup = story("Morning Brief: storms sweep the plains")

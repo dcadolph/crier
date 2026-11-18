@@ -60,15 +60,15 @@ public struct HeadlineList: View {
         .contentShape(Rectangle())
     }
 
-    // detail describes the entry's outlet, its outlet count, and when it first appeared.
+    // detail describes the entry's outlet, its outlet count, and when the newest report went out.
     private func detail(_ entry: Entry) -> String {
         var parts = [entry.headline.lead.outlet]
         let count = entry.headline.outlets.count
         if count > 1 {
             parts.append("\(count) outlets")
         }
-        if let first = entry.headline.first {
-            parts.append(first.formatted(.relative(presentation: .named)))
+        if let latest = entry.headline.latest {
+            parts.append(latest.formatted(.relative(presentation: .named)))
         }
         return parts.joined(separator: " · ")
     }

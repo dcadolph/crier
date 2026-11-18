@@ -1,4 +1,6 @@
+import AppKit
 import CoreGraphics
+import SwiftUI
 import Testing
 
 @testable import CrierKit
@@ -52,5 +54,22 @@ struct NewsBandTests {
         #expect(layout.pages.flatMap { $0 }.allSatisfy { $0.tag == nil })
         let tags = layout.rest.map { $0.tag != nil }
         #expect(tags.enumerated().filter(\.element).map(\.offset) == [1, 5, 9])
+    }
+
+    // bellColor takes the theme's bell color when set, else cream on a dark tile and ink on a cream tile.
+    @Test func bellColor() {
+        var theme = BandTheme.dark
+        #expect(theme.bell == nil)
+        #expect(NewsBand.bellColor(theme) == BandTheme.paper)
+        theme.tile = BandTheme.paper
+        #expect(NewsBand.bellColor(theme) == BandTheme.ink)
+        theme.bell = BandTheme.gold
+        #expect(NewsBand.bellColor(theme) == BandTheme.gold)
+        let host = BandTheme(background: .black, foreground: .white, accent: .red, tile: .gray, bell: BandTheme.gold)
+        #expect(NewsBand.bellColor(host) == BandTheme.gold)
+        let gold = NSColor(BandTheme.gold).usingColorSpace(.sRGB)
+        #expect(gold.map { Int(($0.redComponent * 255).rounded()) } == 0xC9)
+        #expect(gold.map { Int(($0.greenComponent * 255).rounded()) } == 0xA2)
+        #expect(gold.map { Int(($0.blueComponent * 255).rounded()) } == 0x4B)
     }
 }

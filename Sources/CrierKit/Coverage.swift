@@ -11,6 +11,8 @@ public struct Headline: Sendable, Hashable, Identifiable {
     public let outlets: [String]
     // keywords are the lead title's significant words, used to recognize the event again later.
     public let keywords: Set<String>
+    // interest is how much the reader wants the event's topic. News sets it from the feeds that carry the event.
+    public internal(set) var interest = Interest.normal
 
     // id is the lead story's id.
     public var id: String {
@@ -20,6 +22,11 @@ public struct Headline: Sendable, Hashable, Identifiable {
     // first is the earliest publish date among the stories, if any has one.
     public var first: Date? {
         stories.compactMap(\.published).min()
+    }
+
+    // latest is the newest publish date among the stories, if any has one. It says how fresh the event is.
+    public var latest: Date? {
+        stories.compactMap(\.published).max()
     }
 
     // rank is the best editor ranking among the stories, if any feed ranks one.
