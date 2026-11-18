@@ -21,8 +21,9 @@ Crier is free. It is a work in progress.
   stories get a red dot, and the newest ones can send a notification, with quiet hours, a daily cap,
   and no repeats.
 - Keeps the teams and subjects you follow in the ticker.
-- Places the ticker at the center, left of center, or right of center of the menu bar, or fills the open
-  bar. It steps around the notch and around the clock from Fuginaut, and stays clear of the status icons.
+- Fills the open menu bar with the ticker by default, or sets it at a fixed width at the center, left of
+  center, or right of center. It steps around the notch and around the clock from Fuginaut, and stays
+  clear of the status icons.
 - Opens a window with the top stories in rotating columns over the full headline list.
 
 Hover over the ticker to hold it still. Click a headline to open it.

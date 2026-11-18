@@ -14,6 +14,7 @@ struct SettingsTests {
     // emptyDecodesDefaults gives every default for an empty object.
     @Test func emptyDecodesDefaults() throws {
         #expect(try decode("{}") == CrierKit.Settings())
+        #expect(CrierKit.Settings().fill)
     }
 
     // partialKeepsChoices keeps stored choices, defaults the rest, and skips an unknown place, look, topic, or
@@ -21,7 +22,7 @@ struct SettingsTests {
     @Test func partialKeepsChoices() throws {
         let settings = try decode(
             #"{"speed": 80, "interest": {"tech": "less", "world": "off", "nonsense": "more", "music": "loud"}, "#
-                + #""place": "floating", "look": "neon", "rotationSeconds": 45, "position": "sideways", "fill": true}"#
+                + #""place": "floating", "look": "neon", "rotationSeconds": 45, "position": "sideways", "fill": false}"#
         )
         #expect(settings.speed == 80)
         #expect(settings.level(.tech) == .less)
@@ -32,7 +33,7 @@ struct SettingsTests {
         #expect(settings.look == .automatic)
         #expect(settings.rotationSeconds == 45)
         #expect(settings.position == .center)
-        #expect(settings.fill)
+        #expect(!settings.fill)
         #expect(settings.menuRoom == 900)
         #expect(settings.follows == Follow.defaults)
     }
@@ -48,7 +49,7 @@ struct SettingsTests {
         settings.feeds = [CustomFeed(name: "Mine", url: "https://example.com/rss")]
         settings.alerts.minOutlets = 9
         settings.position = .leftOfCenter
-        settings.fill = true
+        settings.fill = false
         settings.menuRoom = 640
         settings.interest[.games] = .more
         settings.interest[.sports] = .off

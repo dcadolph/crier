@@ -162,8 +162,9 @@ public struct Settings: Codable, Sendable, Equatable {
     public var offset = 0.0
     // position is where the menu bar ticker sits along the bar.
     public var position = Position.center
-    // fill stretches the menu bar ticker across the open bar on its position's side instead of using width.
-    public var fill = false
+    // fill stretches the menu bar ticker across the open bar on its position's side instead of using width. It is
+    // on by default, since a fixed width reads as a narrow slot on a wide display.
+    public var fill = true
     // menuRoom is how much of the bar's left end is kept for app menus when Crier cannot read where they end.
     public var menuRoom = 900.0
     // speed is how fast headlines scroll, in points per second.
