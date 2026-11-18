@@ -327,12 +327,12 @@ struct BandCard: View {
         .help(entry.headline.lead.title)
     }
 
-    // detail says how many outlets carry the story and when it first appeared.
+    // detail says how many outlets carry the story and when the newest report went out.
     static func detail(_ headline: Headline) -> String {
         let count = headline.outlets.count
         var parts = [count == 1 ? "1 outlet" : "\(count) outlets"]
-        if let first = headline.first {
-            parts.append(first.formatted(.relative(presentation: .named)))
+        if let latest = headline.latest {
+            parts.append(latest.formatted(.relative(presentation: .named)))
         }
         return parts.joined(separator: " · ")
     }

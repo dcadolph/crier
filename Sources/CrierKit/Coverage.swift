@@ -22,6 +22,11 @@ public struct Headline: Sendable, Hashable, Identifiable {
         stories.compactMap(\.published).min()
     }
 
+    // latest is the newest publish date among the stories, if any has one. It says how fresh the event is.
+    public var latest: Date? {
+        stories.compactMap(\.published).max()
+    }
+
     // rank is the best editor ranking among the stories, if any feed ranks one.
     public var rank: Int? {
         stories.compactMap(\.rank).min()
