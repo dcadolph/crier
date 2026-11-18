@@ -54,6 +54,8 @@ struct SettingsView: View {
     var loginItem: LoginItem
     // tab is the page on show.
     @State private var tab: SettingsTab = .ticker
+    // trusted reports whether Crier may read the app menus, checked while the ticker page is open.
+    @State private var trusted = BarRoom.trusted
 
     // body draws the header over the tabs.
     var body: some View {
@@ -95,14 +97,39 @@ struct SettingsView: View {
                 }
             }
             if store.settings.place == .menuBar {
-                LabeledContent("Width") {
-                    Slider(value: $store.settings.width, in: 240...1200, step: 20)
-                    Text("\(Int(store.settings.width)) pt").monospacedDigit().frame(width: 60, alignment: .trailing)
+                Picker("Position", selection: $store.settings.position) {
+                    ForEach(Position.allCases, id: \.self) { position in
+                        Text(position.title).tag(position)
+                    }
+                }
+                Toggle("Fill the open bar", isOn: $store.settings.fill)
+                if !store.settings.fill {
+                    LabeledContent("Width") {
+                        Slider(value: $store.settings.width, in: 240...1200, step: 20)
+                        Text("\(Int(store.settings.width)) pt").monospacedDigit().frame(width: 60, alignment: .trailing)
+                    }
                 }
                 LabeledContent("Offset") {
                     Slider(value: $store.settings.offset, in: -800...800, step: 10)
                     Text("\(Int(store.settings.offset)) pt").monospacedDigit().frame(width: 60, alignment: .trailing)
                 }
+                if trusted {
+                    LabeledContent("App menus", value: "Tracked")
+                } else {
+                    LabeledContent("Room for app menus") {
+                        Slider(value: $store.settings.menuRoom, in: 200...2000, step: 20)
+                        Text("\(Int(store.settings.menuRoom)) pt").monospacedDigit()
+                            .frame(width: 60, alignment: .trailing)
+                    }
+                    LabeledContent("Track the menus exactly") {
+                        Button("Allow Accessibility…") {
+                            BarRoom.askForTrust()
+                        }
+                    }
+                }
+                Text("The ticker steps around the notch and Fuginaut's clock, and stays clear of the status icons.")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
             }
             LabeledContent("Speed") {
                 Slider(value: $store.settings.speed, in: 5...200, step: 5) {
@@ -126,6 +153,12 @@ struct SettingsView: View {
                 .foregroundStyle(.secondary)
         }
         .formStyle(.grouped)
+        .task {
+            while !Task.isCancelled {
+                trusted = BarRoom.trusted
+                try? await Task.sleep(for: BarRoom.interval)
+            }
+        }
     }
 
     // sourcesPage turns topics and the single feeds under them on and off.

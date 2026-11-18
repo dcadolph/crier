@@ -16,6 +16,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var notifier: Notifier?
     // ticker draws the ticker on every display that shows it.
     private var ticker: TickerPanels?
+    // room measures what else takes space in the menu bar.
+    private var room: BarRoom?
     // statusItem is the menu bar bell.
     private var statusItem: StatusItemController?
     // newsWindow is Crier's own window.
@@ -41,16 +43,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         self.news = news
         self.notifier = notifier
-        ticker = TickerPanels(store: store, news: news)
         let newsWindow = NewsWindow(store: store, news: news)
         self.newsWindow = newsWindow
         let statusItem = StatusItemController(
             store: store, news: news, openNews: { [weak newsWindow] in newsWindow?.show() },
             openSettings: { [weak self] in self?.showSettings() })
+        self.statusItem = statusItem
+        let room = BarRoom(store: store) { [weak statusItem] in statusItem?.bellFrame }
+        self.room = room
+        ticker = TickerPanels(store: store, news: news, room: room)
         statusItem.watchBarAppearance { [weak self] appearance in
             self?.ticker?.barAppearance = appearance
         }
-        self.statusItem = statusItem
         news.start()
     }
 

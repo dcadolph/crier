@@ -17,6 +17,25 @@ public enum Place: String, Codable, CaseIterable, Sendable {
     }
 }
 
+// Position is where the menu bar ticker sits along the bar.
+public enum Position: String, Codable, CaseIterable, Sendable {
+    // center sits in the middle of the bar.
+    case center
+    // leftOfCenter ends just left of the middle, which leaves the middle to a clock.
+    case leftOfCenter
+    // rightOfCenter starts just right of the middle.
+    case rightOfCenter
+
+    // title names the position in settings.
+    public var title: String {
+        switch self {
+        case .center: "Center"
+        case .leftOfCenter: "Left of center"
+        case .rightOfCenter: "Right of center"
+        }
+    }
+}
+
 // StoredColor is a color kept in settings as sRGB components.
 public struct StoredColor: Codable, Sendable, Hashable {
     // red, green, blue, and alpha run from 0 to 1.
@@ -141,6 +160,12 @@ public struct Settings: Codable, Sendable, Equatable {
     public var width = 560.0
     // offset nudges the menu bar ticker right of center, or left when negative.
     public var offset = 0.0
+    // position is where the menu bar ticker sits along the bar.
+    public var position = Position.center
+    // fill stretches the menu bar ticker across the open bar on its position's side instead of using width.
+    public var fill = false
+    // menuRoom is how much of the bar's left end is kept for app menus when Crier cannot read where they end.
+    public var menuRoom = 900.0
     // speed is how fast headlines scroll, in points per second.
     public var speed = 40.0
     // allDisplays shows the ticker on every display instead of only the main one.
@@ -198,7 +223,7 @@ extension Settings {
     // CodingKeys names the stored fields.
     private enum CodingKeys: String, CodingKey {
         case tickerOn, place, width, offset, speed, allDisplays, topics, follows, feeds, refreshMinutes, alerts
-        case disabledSources, tickerColor, look, customLook, rotationSeconds
+        case disabledSources, tickerColor, look, customLook, rotationSeconds, position, fill, menuRoom
     }
 
     // init decodes the stored fields and defaults the missing ones.
@@ -223,6 +248,9 @@ extension Settings {
         look = (try? c.decodeIfPresent(Look.self, forKey: .look)) ?? look
         customLook = try c.decodeIfPresent(CustomLook.self, forKey: .customLook) ?? customLook
         rotationSeconds = try c.decodeIfPresent(Double.self, forKey: .rotationSeconds) ?? rotationSeconds
+        position = (try? c.decodeIfPresent(Position.self, forKey: .position)) ?? position
+        fill = try c.decodeIfPresent(Bool.self, forKey: .fill) ?? fill
+        menuRoom = try c.decodeIfPresent(Double.self, forKey: .menuRoom) ?? menuRoom
     }
 
     // encode stores every field, with topics as a sorted list of names.
@@ -244,5 +272,8 @@ extension Settings {
         try c.encode(look, forKey: .look)
         try c.encode(customLook, forKey: .customLook)
         try c.encode(rotationSeconds, forKey: .rotationSeconds)
+        try c.encode(position, forKey: .position)
+        try c.encode(fill, forKey: .fill)
+        try c.encode(menuRoom, forKey: .menuRoom)
     }
 }

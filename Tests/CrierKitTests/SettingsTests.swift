@@ -19,13 +19,17 @@ struct SettingsTests {
     // partialKeepsChoices keeps stored choices, defaults the rest, and skips an unknown place or look.
     @Test func partialKeepsChoices() throws {
         let settings = try decode(
-            #"{"speed": 80, "topics": ["tech", "nonsense"], "place": "floating", "look": "neon", "rotationSeconds": 45}"#
+            #"{"speed": 80, "topics": ["tech", "nonsense"], "place": "floating", "look": "neon", "rotationSeconds": 45, "#
+                + #""position": "sideways", "fill": true}"#
         )
         #expect(settings.speed == 80)
         #expect(settings.topics == [.tech])
         #expect(settings.place == .menuBar)
         #expect(settings.look == .automatic)
         #expect(settings.rotationSeconds == 45)
+        #expect(settings.position == .center)
+        #expect(settings.fill)
+        #expect(settings.menuRoom == 900)
         #expect(settings.follows == Follow.defaults)
     }
 
@@ -39,6 +43,9 @@ struct SettingsTests {
         settings.customLook.accent = StoredColor(red: 0, green: 0.5, blue: 1)
         settings.feeds = [CustomFeed(name: "Mine", url: "https://example.com/rss")]
         settings.alerts.minOutlets = 9
+        settings.position = .leftOfCenter
+        settings.fill = true
+        settings.menuRoom = 640
         let data = try JSONEncoder().encode(settings)
         #expect(try JSONDecoder().decode(CrierKit.Settings.self, from: data) == settings)
     }

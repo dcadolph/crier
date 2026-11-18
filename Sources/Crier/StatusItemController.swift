@@ -43,6 +43,14 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         item.menu = menu
     }
 
+    // bellFrame returns the bell's frame in screen coordinates, or nil when macOS keeps it out of the bar.
+    var bellFrame: NSRect? {
+        guard let window = item.button?.window, window.isVisible, item.isVisible else {
+            return nil
+        }
+        return window.frame
+    }
+
     // watchBarAppearance calls handler now and whenever the menu bar switches between light and dark text. The
     // bell's button takes on the menu bar's own appearance, which follows the wallpaper as well as the system
     // theme, so it is the same signal macOS uses for the bar's text.

@@ -10,6 +10,8 @@ final class TickerPanels: NSObject {
     private let store: SettingsStore
     // news holds the ticker entries.
     private let news: News
+    // room measures what else takes space in the menu bar.
+    private let room: BarRoom
     // panels holds one panel per display, keyed by display number.
     private var panels: [CGDirectDisplayID: TickerPanel] = [:]
     // barAppearance is the menu bar's appearance, which the ticker takes in the menu bar so its text reads like
@@ -21,10 +23,14 @@ final class TickerPanels: NSObject {
     }
 
     // init places the panels and follows display, space, and settings changes.
-    init(store: SettingsStore, news: News) {
+    init(store: SettingsStore, news: News, room: BarRoom) {
         self.store = store
         self.news = news
+        self.room = room
         super.init()
+        room.onChange = { [weak self] in
+            self?.layout()
+        }
         NotificationCenter.default.addObserver(
             self, selector: #selector(layout), name: NSApplication.didChangeScreenParametersNotification, object: nil
         )
@@ -38,14 +44,14 @@ final class TickerPanels: NSObject {
     }
 
     // layout places a panel on every display that shows the ticker and removes the rest.
-    @objc private func layout() {
+    @objc func layout() {
         let settings = store.settings
         var seen = Set<CGDirectDisplayID>()
         for display in settings.tickerOn ? Display.shown(settings) : [] {
             seen.insert(display.id)
             let panel = panels[display.id] ?? makePanel(display.id)
             panel.appearance = settings.place == .menuBar ? barAppearance : nil
-            panel.show(frame: Placement.frame(bar: display.bar(), settings: settings))
+            panel.show(frame: Placement.frame(bar: display.bar(), settings: settings, room: room.room))
         }
         for (id, panel) in panels where !seen.contains(id) {
             panel.orderOut(nil)
