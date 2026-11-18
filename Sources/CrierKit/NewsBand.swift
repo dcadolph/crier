@@ -12,19 +12,25 @@ public struct BandTheme: Sendable, Equatable {
     public var accent: Color
     // tile backs the bell beside the wordmark.
     public var tile: Color
+    // bell colors the system bell drawn when the host passes no mark image, or nil for cream or ink to suit the
+    // tile.
+    public var bell: Color?
 
     // init builds a theme.
-    public init(background: Color, foreground: Color, accent: Color, tile: Color) {
+    public init(background: Color, foreground: Color, accent: Color, tile: Color, bell: Color? = nil) {
         self.background = background
         self.foreground = foreground
         self.accent = accent
         self.tile = tile
+        self.bell = bell
     }
 
     // ink is the near black of the app icon's tile.
     public static let ink = Color(red: 32 / 255, green: 31 / 255, blue: 29 / 255)
     // paper is the warm cream of the bell.
     public static let paper = Color(red: 0.96, green: 0.93, blue: 0.86)
+    // gold is a warm metallic gold, #C9A24B, for a host that wants the bell in color.
+    public static let gold = Color(red: 201 / 255, green: 162 / 255, blue: 75 / 255)
     // dark sets cream type on ink.
     public static let dark = BandTheme(
         background: ink, foreground: paper, accent: Color(nsColor: .systemRed), tile: ink)
@@ -210,7 +216,7 @@ public struct NewsBand: View {
                 if let mark {
                     mark.resizable().interpolation(.high).scaledToFit()
                 } else {
-                    Image(systemName: "bell.fill").resizable().scaledToFit().foregroundStyle(Self.paperOn(theme))
+                    Image(systemName: "bell.fill").resizable().scaledToFit().foregroundStyle(Self.bellColor(theme))
                 }
             }
             .frame(height: 30)
@@ -243,9 +249,10 @@ public struct NewsBand: View {
         .padding(.vertical, 12)
     }
 
-    // paperOn returns the color the fallback bell takes on the theme's tile.
-    private static func paperOn(_ theme: BandTheme) -> Color {
-        theme.tile == BandTheme.paper ? BandTheme.ink : BandTheme.paper
+    // bellColor returns the color the fallback bell takes: the theme's bell color, else cream or ink to suit the
+    // tile.
+    static func bellColor(_ theme: BandTheme) -> Color {
+        theme.bell ?? (theme.tile == BandTheme.paper ? BandTheme.ink : BandTheme.paper)
     }
 
     // rule draws the thin line between columns.
