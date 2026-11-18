@@ -5,13 +5,16 @@ SIGN_ID ?= -
 TIMESTAMP := $(if $(filter -,$(SIGN_ID)),,--timestamp)
 ARCHS ?=
 ARCH_FLAGS := $(foreach arch,$(ARCHS),--arch $(arch))
+ZIP ?= .build/Crier.zip
+DMG ?= .build/Crier.dmg
+DMGBUILD ?= dmgbuild
 FORMAT_PATHS := Package.swift Sources Tests
 
 ICON := art/app-icon.png
 ICONSET := .build/AppIcon.iconset
 ICNS := .build/AppIcon.icns
 
-.PHONY: build test lint format app run clean
+.PHONY: build test lint format app zip dmg run clean
 
 build:
 	swift build -Xswiftc -warnings-as-errors
@@ -44,6 +47,15 @@ app: $(ICNS)
 	cp $(ICNS) $(APP)/Contents/Resources/AppIcon.icns
 	cp art/glyph.png art/glyph@2x.png art/bell.png $(APP)/Contents/Resources/
 	codesign --force --options runtime $(TIMESTAMP) --sign "$(SIGN_ID)" $(APP)
+
+zip: app
+	rm -f $(ZIP)
+	ditto -c -k --keepParent $(APP) $(ZIP)
+
+dmg:
+	rm -f $(DMG)
+	$(DMGBUILD) -s dmg.py -D app=$(APP) "Crier" $(DMG)
+	$(if $(filter-out -,$(SIGN_ID)),codesign --force --sign "$(SIGN_ID)" --timestamp $(DMG))
 
 run: app
 	-pkill -x Crier
