@@ -56,7 +56,11 @@ zip: app
 	rm -f $(ZIP)
 	ditto -c -k --keepParent $(APP) $(ZIP)
 
+# dmg refuses a dev build, since make dev writes the same app with the measuring log and the tornado drill.
 dmg:
+	@if strings $(APP)/Contents/MacOS/Crier | grep -q -e "Crier drill" -e "measuring log failed"; then \
+		echo "$(APP) is a dev build. Run make app first."; exit 1; \
+	fi
 	rm -f $(DMG)
 	$(DMGBUILD) -s dmg.py -D app=$(APP) "Crier" $(DMG)
 	$(if $(filter-out -,$(SIGN_ID)),codesign --force --sign "$(SIGN_ID)" --timestamp $(DMG))

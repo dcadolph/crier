@@ -42,9 +42,12 @@ final class SettingsStore {
         listeners.append(listener)
     }
 
-    // reset restores the defaults.
+    // reset restores the defaults but keeps the emergency choices, so a reset never turns emergency mode on or
+    // moves where Crier watches for warnings.
     func reset() {
-        settings = Settings()
+        var defaults = Settings()
+        defaults.emergency = settings.emergency
+        settings = defaults
     }
 
     // save writes the settings to user defaults.
