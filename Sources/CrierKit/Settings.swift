@@ -200,10 +200,15 @@ public struct EmergencyRules: Codable, Sendable, Equatable {
     public var sensitivity = Sensitivity.phone
     // sound plays the emergency sound for top tier emergencies.
     public var sound = true
+    // soundName names the system sound played for an emergency.
+    public var soundName = EmergencyRules.defaultSound
     // flashing pulses the ticker for top tier emergencies.
     public var flashing = true
     // national decides when a national story counts as an emergency.
     public var national = NationalRules()
+
+    // defaultSound is the system sound played for an emergency unless the reader picks another.
+    public static let defaultSound = "Sosumi"
 
     // init builds the default emergency choices.
     public init() {}
@@ -215,6 +220,8 @@ public struct EmergencyRules: Codable, Sendable, Equatable {
         zip = try c.decodeIfPresent(String.self, forKey: .zip) ?? zip
         sensitivity = (try? c.decodeIfPresent(Sensitivity.self, forKey: .sensitivity)) ?? sensitivity
         sound = try c.decodeIfPresent(Bool.self, forKey: .sound) ?? sound
+        let name = (try? c.decodeIfPresent(String.self, forKey: .soundName)) ?? nil
+        soundName = name.map { $0.trimmingCharacters(in: .whitespaces) }.flatMap { $0.isEmpty ? nil : $0 } ?? soundName
         flashing = try c.decodeIfPresent(Bool.self, forKey: .flashing) ?? flashing
         national = (try? c.decodeIfPresent(NationalRules.self, forKey: .national)) ?? national
     }

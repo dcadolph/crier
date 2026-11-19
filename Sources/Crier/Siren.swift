@@ -35,8 +35,22 @@ final class Siren {
     // test ends the test emergency.
     @ObservationIgnored private var testEnd: Task<Void, Never>?
 
-    // sound is the system sound Crier plays for an emergency.
-    static let sound = "Sosumi"
+    // sounds are the names of the system sounds the reader can pick, from the system's sounds and the reader's
+    // own, sorted and without repeats.
+    static let sounds: [String] = {
+        let folders = [
+            URL(filePath: "/System/Library/Sounds"),
+            FileManager.default.homeDirectoryForCurrentUser.appending(path: "Library/Sounds"),
+        ]
+        let kinds: Set<String> = ["aiff", "aif", "wav", "caf", "m4a"]
+        let names = folders.flatMap { folder in
+            let files =
+                (try? FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil)) ?? []
+            return files.filter { kinds.contains($0.pathExtension.lowercased()) }
+                .map { $0.deletingPathExtension().lastPathComponent }
+        }
+        return Set(names + [EmergencyRules.defaultSound]).sorted()
+    }()
     // repeats is how many times the sound plays when nobody clicks.
     static let repeats = 5
     // gap is the time between plays of the sound.
@@ -176,11 +190,25 @@ final class Siren {
                 guard !Task.isCancelled else {
                     return
                 }
-                NSSound(named: Self.sound)?.play()
+                self?.chosenSound()?.play()
                 try? await Task.sleep(for: Self.gap)
             }
             self?.acknowledged = true
         }
+    }
+
+    // preview plays the chosen sound once, so the reader can hear it before an emergency does.
+    func preview() {
+        guard let sound = chosenSound() else {
+            return
+        }
+        sound.stop()
+        sound.play()
+    }
+
+    // chosenSound returns the sound picked in settings, or the default when that sound is gone.
+    private func chosenSound() -> NSSound? {
+        NSSound(named: store.settings.emergency.soundName) ?? NSSound(named: EmergencyRules.defaultSound)
     }
 
     // stopSound ends the sound and marks the interruption acknowledged.

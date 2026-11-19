@@ -150,6 +150,10 @@ struct SettingsTests {
         let settings = try decode(#"{"emergency": {"mode": "loud", "zip": "10001", "sound": false}}"#)
         #expect(settings.emergency.mode == .local)
         #expect(settings.emergency.sensitivity == .phone)
+        #expect(settings.emergency.soundName == "Sosumi")
+        #expect(try decode(#"{"emergency": {"soundName": "Glass"}}"#).emergency.soundName == "Glass")
+        #expect(try decode(#"{"emergency": {"soundName": "  "}}"#).emergency.soundName == "Sosumi")
+        #expect(try decode(#"{"emergency": {"soundName": 7}}"#).emergency.soundName == "Sosumi")
         #expect(settings.emergency.zip == "10001")
         #expect(!settings.emergency.sound)
         #expect(settings.emergency.flashing)
@@ -158,6 +162,7 @@ struct SettingsTests {
         changed.emergency.mode = .localAndNational
         changed.emergency.flashing = false
         changed.emergency.sensitivity = .tornadoAndCivil
+        changed.emergency.soundName = "Submarine"
         let data = try JSONEncoder().encode(changed)
         #expect(try JSONDecoder().decode(CrierKit.Settings.self, from: data) == changed)
     }

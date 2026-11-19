@@ -379,6 +379,18 @@ struct SettingsView: View {
                 .help("Every other watch and warning for your area shows as the quiet orange line.")
                 Toggle("Play the emergency sound", isOn: $store.settings.emergency.sound)
                     .help("Crier plays its own sound for the top tier, even when notification sounds are off.")
+                HStack {
+                    Picker("Sound", selection: $store.settings.emergency.soundName) {
+                        ForEach(Siren.sounds, id: \.self) { name in
+                            Text(name).tag(name)
+                        }
+                    }
+                    Button("Preview") {
+                        siren.preview()
+                    }
+                    .help("Play the sound once.")
+                }
+                .disabled(!store.settings.emergency.sound)
                 Toggle("Flash the ticker", isOn: $store.settings.emergency.flashing)
                     .help("Three slow flashes, then steady red. Never when Reduce Motion is on.")
                 LabeledContent("Last checked", value: checkedText)
