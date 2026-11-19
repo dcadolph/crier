@@ -126,9 +126,10 @@ final class TickerPanel: NSPanel {
     }
 }
 
-// TickerRoot is a ticker panel's content: the ticker, on a bar backing when it sits in the strip. During an
-// emergency the panel turns red with white type, and the display's leftmost panel pins the emergency line over the
-// left end of the row, so the shared scroll keeps its place.
+// TickerRoot is a ticker panel's content: the ticker, on a bar backing when it sits in the strip. The display's
+// leftmost panel pins the emergency line over the left end of the row, so the shared scroll keeps its place. For a
+// watch or an ordinary warning the line sits on an orange tab and the ticker keeps its look. From the red tier up
+// the panel turns red with white type.
 struct TickerRoot: View {
     // store holds the live settings.
     let store: SettingsStore
@@ -148,6 +149,11 @@ struct TickerRoot: View {
 
     // emergencyRed fills the ticker during an emergency.
     static let emergencyRed = Color(.sRGB, red: 0.78, green: 0.06, blue: 0.08)
+    // pinnedRed backs the pinned line from the red tier up.
+    static let pinnedRed = Color(.sRGB, red: 0.5, green: 0.02, blue: 0.04)
+    // noticeOrange backs the pinned line for a watch or an ordinary warning. It takes dark type, which reads
+    // better on orange than white does.
+    static let noticeOrange = Color(.sRGB, red: 0.98, green: 0.58, blue: 0.1)
     // pulse is how long each half of a flash takes. Three pulses take three seconds, well under the limit of three
     // flashes a second.
     static let pulse = 0.5
@@ -155,7 +161,7 @@ struct TickerRoot: View {
     // body draws the ticker.
     var body: some View {
         let strip = store.settings.place == .belowMenuBar
-        let alarm = siren.tier > .none
+        let alarm = siren.tier >= .red
         TickerView(
             entries: news.entries, speed: store.settings.speed,
             color: alarm ? .white : store.settings.tickerColor?.color, offset: strip ? offset + 8 : offset,
@@ -163,8 +169,8 @@ struct TickerRoot: View {
         )
         .padding(.horizontal, strip ? 8 : 0)
         .overlay(alignment: .leading) {
-            if alarm, lead, let pinned = siren.pinned {
-                pinnedLine(pinned)
+            if siren.tier > .none, lead, let pinned = siren.pinned {
+                pinnedLine(pinned, quiet: siren.tier == .orange)
             }
         }
         .background {
@@ -180,16 +186,16 @@ struct TickerRoot: View {
         }
     }
 
-    // pinnedLine draws the emergency line on a darker red tab. A click stops the sound, or opens the warning's
-    // page once the sound has stopped.
-    private func pinnedLine(_ text: String) -> some View {
+    // pinnedLine draws the emergency line on a darker red tab, or on an orange tab when quiet. A click stops the
+    // sound, or opens the warning's page once the sound has stopped.
+    private func pinnedLine(_ text: String, quiet: Bool) -> some View {
         Text(text)
             .font(.system(size: 13, weight: .bold))
-            .foregroundStyle(.white)
+            .foregroundStyle(quiet ? .black : .white)
             .lineLimit(1)
             .padding(.horizontal, 10)
             .frame(maxHeight: .infinity)
-            .background(Color(.sRGB, red: 0.5, green: 0.02, blue: 0.04))
+            .background(quiet ? Self.noticeOrange : Self.pinnedRed)
             .contentShape(Rectangle())
             .onTapGesture {
                 siren.click()

@@ -70,6 +70,35 @@ struct EmergencyTests {
             ])
     }
 
+    // notableRecorded counts the watches and ordinary warnings. The urgent warnings, the cancel, the advisory, and
+    // the test never count.
+    @Test func notableRecorded() throws {
+        let notable = try alerts().filter { Emergency.notable($0, now: $0.sent) }
+        #expect(
+            notable.map(\.event).sorted() == [
+                "Flood Warning", "Flood Watch", "Severe Thunderstorm Warning", "Winter Storm Warning",
+            ])
+    }
+
+    // noticesDropReplaced shows only the latest message of a watch, drops it once canceled, and drops it once it
+    // ends.
+    @Test func noticesDropReplaced() {
+        let watch = WeatherAlert(id: "w1", event: "Flood Watch", sent: noon, expires: noon.addingTimeInterval(7200))
+        let update = WeatherAlert(
+            id: "w2", event: "Flood Watch", messageType: "Update", sent: noon.addingTimeInterval(600),
+            expires: noon.addingTimeInterval(7200), references: ["w1"])
+        let cancel = WeatherAlert(
+            id: "w3", event: "Flood Watch", messageType: "Cancel", sent: noon.addingTimeInterval(1200),
+            references: ["w1", "w2"])
+        let advisory = WeatherAlert(id: "a", event: "Wind Advisory", sent: noon)
+        let tornado = WeatherAlert(id: "t", event: "Tornado Warning", sent: noon)
+        let later = noon.addingTimeInterval(1800)
+        #expect(Emergency.notices([watch, advisory, tornado], now: later) == [watch])
+        #expect(Emergency.notices([watch, update], now: later) == [update])
+        #expect(Emergency.notices([watch, update, cancel], now: later).isEmpty)
+        #expect(Emergency.notices([update], now: noon.addingTimeInterval(7200)).isEmpty)
+    }
+
     // urgentLifeSafety counts a life-safety event or a catastrophic threat at any rating, and skips an extreme
     // hazard that is not immediate.
     @Test func urgentLifeSafety() {
@@ -203,6 +232,25 @@ struct EmergencyFeedTests {
         await feed.check(now: tornado.sent)
         #expect(rung.count == 1)
         #expect(reads.urls.first?.query == "point=37.0,-122.0")
+    }
+
+    // checkKeepsNotices keeps the watches and ordinary warnings in force without ringing for them.
+    @Test func checkKeepsNotices() async throws {
+        let reads = Reads()
+        reads.data = try recorded("weather-alerts")
+        let feed = feed(reads)
+        var rung: [[WeatherAlert]] = []
+        feed.onRing = { rung.append($0) }
+        let now = try #require(ISO8601DateFormatter().date(from: "2026-11-18T18:00:00-08:00"))
+        await feed.check(now: now)
+        #expect(Set(feed.notices.map(\.event)) == ["Flood Warning", "Flood Watch", "Winter Storm Warning"])
+        #expect(feed.alerts.map(\.event) == ["Flash Flood Warning"])
+        #expect(rung.map { $0.map(\.event) } == [["Flash Flood Warning"]])
+        reads.data = nil
+        await feed.check(now: now.addingTimeInterval(60))
+        #expect(feed.notices.count == 3)
+        feed.spot = Spot(latitude: 30, longitude: -97)
+        #expect(feed.notices.isEmpty)
     }
 
     // failedCheckKeepsWarnings keeps the known warnings through a failed read until they end.

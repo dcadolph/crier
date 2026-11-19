@@ -3,13 +3,16 @@ import Observation
 
 import CrierKit
 
-// Siren holds the emergency in force and interrupts for it: the red ticker for every tier, and flashing, the
-// emergency sound, and a notification for the top tier. Emergencies break through quiet hours.
+// Siren holds the emergency in force and interrupts for it: an orange pinned line for a watch or an ordinary
+// warning, the red ticker for the red tier and up, and flashing, the emergency sound, and a notification for the
+// top tier. Emergencies break through quiet hours.
 @MainActor
 @Observable
 final class Siren {
     // warnings are the life-safety warnings in force at the reader's spot, newest first.
     private(set) var warnings: [WeatherAlert] = []
+    // notices are the watches and ordinary warnings in force at the reader's spot, newest first. They never sound.
+    private(set) var notices: [WeatherAlert] = []
     // stories are the national stories past the red tier, loudest first.
     private(set) var stories: [(headline: Headline, tier: Tier)] = []
     // rings counts top tier interruptions, so every ticker flashes together when it changes.
@@ -52,27 +55,41 @@ final class Siren {
         if testing || !warnings.isEmpty {
             return .top
         }
-        return stories.first?.tier ?? .none
+        if let story = stories.first {
+            return story.tier
+        }
+        return notices.isEmpty ? .none : .orange
     }
 
-    // pinned is the line pinned in front of the ticker: the newest warning, the loudest story, or the test.
+    // pinned is the line pinned in front of the ticker: the test, the newest warning, the loudest story, or the
+    // newest notice.
     var pinned: String? {
         if testing {
             return "TEST: emergency mode is working. Click to stop the sound."
         }
         if let warning = warnings.first {
-            return line(warning)
+            return line(warning, loud: true)
         }
-        return stories.first?.headline.lead.title
+        if let story = stories.first {
+            return story.headline.lead.title
+        }
+        return notices.first.map { line($0, loud: false) }
     }
 
-    // link is the page that explains the pinned line.
+    // link is the page that explains the pinned line: the forecast page for a warning or a notice, or the story.
     var link: URL? {
-        if !warnings.isEmpty, let spot {
-            return URL(
-                string: "https://forecast.weather.gov/MapClick.php?lat=\(spot.latitude)&lon=\(spot.longitude)")
+        if warnings.isEmpty, let story = stories.first {
+            return story.headline.lead.link
         }
-        return stories.first?.headline.lead.link
+        guard !warnings.isEmpty || !notices.isEmpty, let spot else {
+            return nil
+        }
+        return URL(string: "https://forecast.weather.gov/MapClick.php?lat=\(spot.latitude)&lon=\(spot.longitude)")
+    }
+
+    // notice takes the watches and ordinary warnings in force. They pin a quiet line and never ring.
+    func notice(_ active: [WeatherAlert]) {
+        notices = active
     }
 
     // warn takes the warnings in force and rings for the new ones.
@@ -86,7 +103,8 @@ final class Siren {
         }
         ring()
         notifier.postEmergency(
-            id: newest.id, title: line(newest), body: newest.instruction ?? newest.headline ?? newest.area, link: link)
+            id: newest.id, title: line(newest, loud: true),
+            body: newest.instruction ?? newest.headline ?? newest.area, link: link)
     }
 
     // read takes the latest headlines and rings for a national top tier story that has not sounded yet. The first
@@ -110,6 +128,7 @@ final class Siren {
     // clear drops every emergency, as when emergency mode is turned off.
     func clear() {
         warnings = []
+        notices = []
         stories = []
         endTest()
         stopSound()
@@ -178,12 +197,17 @@ final class Siren {
         testing = false
     }
 
-    // line writes a warning for the ticker, such as "TORNADO WARNING until 1:30 PM".
-    private func line(_ warning: WeatherAlert) -> String {
-        let event = warning.event.uppercased()
-        guard let until = warning.until else {
+    // line writes an alert for the ticker, such as "TORNADO WARNING until 1:30 PM" when loud or "Flood Watch until
+    // Thu 1:00 PM" when quiet. The day shows when the alert runs past today.
+    private func line(_ alert: WeatherAlert, loud: Bool) -> String {
+        let event = loud ? alert.event.uppercased() : alert.event
+        guard let until = alert.until else {
             return event
         }
-        return "\(event) until \(until.formatted(date: .omitted, time: .shortened))"
+        let time =
+            Calendar.current.isDateInToday(until)
+            ? until.formatted(date: .omitted, time: .shortened)
+            : until.formatted(.dateTime.weekday(.abbreviated).hour().minute())
+        return "\(event) until \(time)"
     }
 }

@@ -43,10 +43,20 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         item.menu = menu
     }
 
-    // alarm turns the bell red while an emergency is in force, and back to the bar's own color after.
-    func alarm(_ on: Bool) {
-        item.button?.contentTintColor = on ? .systemRed : nil
-        item.button?.toolTip = on ? "Crier: emergency in force" : "Crier"
+    // alarm turns the bell red while an emergency is in force, orange while only a watch or an ordinary warning
+    // is, and back to the bar's own color after.
+    func alarm(_ tier: Tier) {
+        switch tier {
+        case .none:
+            item.button?.contentTintColor = nil
+            item.button?.toolTip = "Crier"
+        case .orange:
+            item.button?.contentTintColor = .systemOrange
+            item.button?.toolTip = "Crier: watch or warning in force"
+        case .red, .top:
+            item.button?.contentTintColor = .systemRed
+            item.button?.toolTip = "Crier: emergency in force"
+        }
     }
 
     // bellFrame returns the bell's frame in screen coordinates, or nil when macOS keeps it out of the bar.

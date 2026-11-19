@@ -391,7 +391,8 @@ struct SettingsView: View {
             }
             Text(
                 "Life-safety warnings for your area, such as a tornado warning, turn the ticker red, flash it, and "
-                    + "play a sound, even in quiet hours. Watches, advisories, and ordinary warnings never do. "
+                    + "play a sound, even in quiet hours. Watches and ordinary warnings, such as a flood watch, show "
+                    + "as a quiet orange line with no sound. Advisories and statements never show. "
                     + "National breaking news far bigger than major turns the ticker red without a sound, and only "
                     + "wars, declared national emergencies, martial law, and nuclear attacks sound."
             )

@@ -27,6 +27,8 @@ public struct Spot: Codable, Sendable, Hashable {
 public final class EmergencyFeed {
     // alerts are the urgent warnings in force at the spot, newest first.
     public private(set) var alerts: [WeatherAlert] = []
+    // notices are the watches and ordinary warnings in force at the spot, newest first. They never ring.
+    public private(set) var notices: [WeatherAlert] = []
     // failure says in plain words why the last check failed, or nil when it worked.
     public private(set) var failure: String?
     // checked is when the last check finished.
@@ -36,6 +38,7 @@ public final class EmergencyFeed {
         didSet {
             if spot != oldValue {
                 alerts = []
+                notices = []
                 heard = []
             }
         }
@@ -85,10 +88,11 @@ public final class EmergencyFeed {
         loop?.cancel()
         loop = nil
         alerts = []
+        notices = []
     }
 
-    // check reads the warnings at the spot and rings for the new ones. A failed read keeps the warnings already
-    // known until they end, so a network blip never clears a warning that is still in force.
+    // check reads the warnings and notices at the spot and rings for the new warnings. A failed read keeps the
+    // warnings and notices already known until they end, so a network blip never clears one still in force.
     public func check(now: Date = Date()) async {
         guard let spot else {
             return
@@ -99,9 +103,11 @@ public final class EmergencyFeed {
                 return
             }
             alerts = Emergency.active(all, now: now)
+            notices = Emergency.notices(all, now: now)
             failure = nil
         } catch {
             alerts = Emergency.active(alerts, now: now)
+            notices = Emergency.notices(notices, now: now)
             failure = News.reason(error)
         }
         checked = now

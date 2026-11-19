@@ -124,13 +124,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    // watchAlarm keeps the bell red while the siren has an emergency in force and hands the feed's warnings to the
-    // siren when they end.
+    // watchAlarm colors the bell for the emergency in force, hands the feed's warnings to the siren when they end,
+    // and hands it the feed's notices whenever they change.
     private func watchAlarm(siren: Siren, statusItem: StatusItemController) {
         withObservationTracking {
-            statusItem.alarm(siren.tier > .none)
+            statusItem.alarm(siren.tier)
             if feed.alerts != siren.warnings {
                 siren.warn(feed.alerts, new: [])
+            }
+            if feed.notices != siren.notices {
+                siren.notice(feed.notices)
             }
         } onChange: { [weak self, weak siren, weak statusItem] in
             Task { @MainActor in
