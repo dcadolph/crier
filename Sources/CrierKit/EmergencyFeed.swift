@@ -43,6 +43,8 @@ public final class EmergencyFeed {
             }
         }
     }
+    // sensitivity picks which warnings sound. The rest of the watches and warnings become notices.
+    public var sensitivity = Sensitivity.phone
     // onRing runs with the warnings that just arrived, so the app can sound and flash once per warning. An update
     // to a warning that already rang does not ring again.
     @ObservationIgnored public var onRing: (([WeatherAlert]) -> Void)?
@@ -102,12 +104,13 @@ public final class EmergencyFeed {
             guard spot == self.spot else {
                 return
             }
-            alerts = Emergency.active(all, now: now)
-            notices = Emergency.notices(all, now: now)
+            alerts = Emergency.active(all, now: now, sensitivity: sensitivity)
+            notices = Emergency.notices(all, now: now, sensitivity: sensitivity)
             failure = nil
         } catch {
-            alerts = Emergency.active(alerts, now: now)
-            notices = Emergency.notices(notices, now: now)
+            let known = alerts + notices
+            alerts = Emergency.active(known, now: now, sensitivity: sensitivity)
+            notices = Emergency.notices(known, now: now, sensitivity: sensitivity)
             failure = News.reason(error)
         }
         checked = now

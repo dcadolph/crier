@@ -371,6 +371,12 @@ struct SettingsView: View {
                 TextField("ZIP code", text: $store.settings.emergency.zip, prompt: Text("This Mac's location"))
                     .help("Leave it empty to use this Mac's location. Your area stays on this Mac.")
                 LabeledContent("Area", value: areaText)
+                Picker("Sound and flash for", selection: $store.settings.emergency.sensitivity) {
+                    ForEach(Sensitivity.allCases, id: \.self) { sensitivity in
+                        Text(sensitivity.title).tag(sensitivity)
+                    }
+                }
+                .help("Every other watch and warning for your area shows as the quiet orange line.")
                 Toggle("Play the emergency sound", isOn: $store.settings.emergency.sound)
                     .help("Crier plays its own sound for the top tier, even when notification sounds are off.")
                 Toggle("Flash the ticker", isOn: $store.settings.emergency.flashing)

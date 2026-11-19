@@ -118,6 +118,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             siren?.warn(self.feed.alerts, new: new)
         }
         watchAlarm(siren: siren, statusItem: statusItem)
+        feed.sensitivity = store.settings.emergency.sensitivity
         if store.settings.emergency.mode != .off {
             locator.locate(zip: store.settings.emergency.zip)
             feed.start()
@@ -145,9 +146,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    // emergencySettingsChanged starts or stops polling when emergency mode turns on or off, and looks up the area
-    // again shortly after the ZIP code stops changing.
+    // emergencySettingsChanged starts or stops polling when emergency mode turns on or off, checks again when the
+    // sensitivity changes, and looks up the area again shortly after the ZIP code stops changing.
     private func emergencySettingsChanged(from old: EmergencyRules, to new: EmergencyRules) {
+        if new.sensitivity != old.sensitivity {
+            feed.sensitivity = new.sensitivity
+            if new.mode != .off, old.mode != .off {
+                Task { await feed.check() }
+            }
+        }
         if new.mode == .off, old.mode != .off {
             feed.stop()
             siren?.clear()

@@ -182,23 +182,40 @@ public enum Emergency {
         "Hazardous Materials Warning", "Earthquake Warning",
     ]
 
-    // urgent reports whether an alert is a life-safety emergency in force now: a real alert, not a cancel,
-    // not past its end, and either sent to phones as an imminent threat, rated Extreme and Immediate, marked
-    // with a catastrophic damage threat, or one of the life-safety events. Watches, advisories, statements,
-    // and ordinary warnings such as Severe Thunderstorm or river Flood Warnings never count.
-    public static func urgent(_ alert: WeatherAlert, now: Date) -> Bool {
+    // civil are the tornado and civil emergency events, the only ones that sound at the narrowest sensitivity.
+    public static let civil: Set<String> = [
+        "Tornado Warning", "Civil Danger Warning", "Civil Emergency Message", "Shelter In Place Warning",
+        "Evacuation Immediate", "Law Enforcement Warning", "Nuclear Power Plant Warning", "Radiological Hazard Warning",
+        "Hazardous Materials Warning",
+    ]
+
+    // urgent reports whether an alert in force now sounds at the given sensitivity. It has to be a real alert, not
+    // a cancel, and not past its end. At the phone sensitivity it must have gone to phones as an imminent threat,
+    // be rated Extreme and Immediate, carry a catastrophic damage threat, or be one of the life-safety events.
+    // The storm and flood sensitivity adds severe thunderstorm and flood warnings. The tornado and civil
+    // sensitivity counts only the civil events. Watches, advisories, and statements never count.
+    public static func urgent(_ alert: WeatherAlert, now: Date, sensitivity: Sensitivity = .phone) -> Bool {
         guard inForce(alert, now: now) else {
             return false
         }
-        return alert.phones || (alert.severity == "Extreme" && alert.urgency == "Immediate")
+        let phone =
+            alert.phones || (alert.severity == "Extreme" && alert.urgency == "Immediate")
             || alert.threat == "CATASTROPHIC" || lifeSafety.contains(alert.event)
+        switch sensitivity {
+        case .phone:
+            return phone
+        case .stormAndFlood:
+            return phone || alert.event == "Severe Thunderstorm Warning" || alert.event.hasSuffix("Flood Warning")
+        case .tornadoAndCivil:
+            return civil.contains(alert.event)
+        }
     }
 
-    // notable reports whether an alert is a watch or an ordinary warning in force now that falls short of urgent,
-    // such as a Severe Thunderstorm Warning, a river Flood Warning, or a Flood Watch. Advisories and statements
-    // never count.
-    public static func notable(_ alert: WeatherAlert, now: Date) -> Bool {
-        guard inForce(alert, now: now), !urgent(alert, now: now) else {
+    // notable reports whether an alert is a watch or a warning in force now that does not sound at the given
+    // sensitivity, such as a Severe Thunderstorm Warning, a river Flood Warning, or a Flood Watch. Advisories and
+    // statements never count.
+    public static func notable(_ alert: WeatherAlert, now: Date, sensitivity: Sensitivity = .phone) -> Bool {
+        guard inForce(alert, now: now), !urgent(alert, now: now, sensitivity: sensitivity) else {
             return false
         }
         return alert.event.hasSuffix(" Warning") || alert.event.hasSuffix(" Watch")
@@ -212,16 +229,21 @@ public enum Emergency {
         return alert.until.map { $0 > now } ?? true
     }
 
-    // active returns the urgent alerts, newest first.
-    public static func active(_ alerts: [WeatherAlert], now: Date) -> [WeatherAlert] {
-        alerts.filter { urgent($0, now: now) }.sorted { $0.sent > $1.sent }
+    // active returns the alerts that sound at the given sensitivity, newest first.
+    public static func active(_ alerts: [WeatherAlert], now: Date, sensitivity: Sensitivity = .phone)
+        -> [WeatherAlert]
+    {
+        alerts.filter { urgent($0, now: now, sensitivity: sensitivity) }.sorted { $0.sent > $1.sent }
     }
 
     // notices returns the notable alerts, newest first, leaving out any alert that another alert in the list
     // updates or cancels, so a canceled watch drops at once and an updated one shows only its latest message.
-    public static func notices(_ alerts: [WeatherAlert], now: Date) -> [WeatherAlert] {
+    public static func notices(_ alerts: [WeatherAlert], now: Date, sensitivity: Sensitivity = .phone)
+        -> [WeatherAlert]
+    {
         let replaced = Set(alerts.flatMap(\.references))
-        return alerts.filter { !replaced.contains($0.id) && notable($0, now: now) }.sorted { $0.sent > $1.sent }
+        return alerts.filter { !replaced.contains($0.id) && notable($0, now: now, sensitivity: sensitivity) }
+            .sorted { $0.sent > $1.sent }
     }
 
     // ring returns the active alerts that have not sounded yet and the identifiers heard after them. An update

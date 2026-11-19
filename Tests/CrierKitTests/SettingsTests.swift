@@ -149,6 +149,7 @@ struct SettingsTests {
         #expect(CrierKit.Settings().emergency.mode == .local)
         let settings = try decode(#"{"emergency": {"mode": "loud", "zip": "10001", "sound": false}}"#)
         #expect(settings.emergency.mode == .local)
+        #expect(settings.emergency.sensitivity == .phone)
         #expect(settings.emergency.zip == "10001")
         #expect(!settings.emergency.sound)
         #expect(settings.emergency.flashing)
@@ -156,6 +157,7 @@ struct SettingsTests {
         var changed = CrierKit.Settings()
         changed.emergency.mode = .localAndNational
         changed.emergency.flashing = false
+        changed.emergency.sensitivity = .tornadoAndCivil
         let data = try JSONEncoder().encode(changed)
         #expect(try JSONDecoder().decode(CrierKit.Settings.self, from: data) == changed)
     }

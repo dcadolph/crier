@@ -99,6 +99,42 @@ struct EmergencyTests {
         #expect(Emergency.notices([update], now: noon.addingTimeInterval(7200)).isEmpty)
     }
 
+    // sensitivityRecorded sounds for more at the storm and flood sensitivity and for less at the tornado and civil
+    // one, and the alerts that stop sounding become notices.
+    @Test func sensitivityRecorded() throws {
+        let all = try alerts()
+        func sounding(_ sensitivity: Sensitivity) -> [String] {
+            all.filter { Emergency.urgent($0, now: $0.sent, sensitivity: sensitivity) }
+                .map { "\($0.event) \($0.messageType)" }.sorted()
+        }
+        #expect(
+            sounding(.stormAndFlood) == [
+                "Flash Flood Warning Update", "Flood Warning Update", "Severe Thunderstorm Warning Alert",
+                "Tornado Warning Alert", "Tornado Warning Update",
+            ])
+        #expect(sounding(.tornadoAndCivil) == ["Tornado Warning Alert", "Tornado Warning Update"])
+        let flood = try find("Flash Flood Warning", "Update")
+        #expect(Emergency.notable(flood, now: flood.sent, sensitivity: .tornadoAndCivil))
+        let storm = try find("Severe Thunderstorm Warning")
+        #expect(!Emergency.notable(storm, now: storm.sent, sensitivity: .stormAndFlood))
+        let civil = WeatherAlert(id: "c", event: "Shelter In Place Warning", sent: noon)
+        #expect(Emergency.urgent(civil, now: noon, sensitivity: .tornadoAndCivil))
+        let tsunami = WeatherAlert(id: "t", event: "Tsunami Warning", sent: noon, phones: true)
+        #expect(!Emergency.urgent(tsunami, now: noon, sensitivity: .tornadoAndCivil))
+    }
+
+    // sensitivityDecodesForgivingly reads each stored choice and falls back to the phone choice for an unknown one.
+    @Test func sensitivityDecodesForgivingly() throws {
+        func decode(_ json: String) throws -> EmergencyRules {
+            try JSONDecoder().decode(EmergencyRules.self, from: Data(json.utf8))
+        }
+        #expect(try decode("{}").sensitivity == .phone)
+        #expect(try decode(#"{"sensitivity": "stormAndFlood"}"#).sensitivity == .stormAndFlood)
+        #expect(try decode(#"{"sensitivity": "tornadoAndCivil"}"#).sensitivity == .tornadoAndCivil)
+        #expect(try decode(#"{"sensitivity": "everything"}"#).sensitivity == .phone)
+        #expect(try decode(#"{"sensitivity": 3}"#).sensitivity == .phone)
+    }
+
     // urgentLifeSafety counts a life-safety event or a catastrophic threat at any rating, and skips an extreme
     // hazard that is not immediate.
     @Test func urgentLifeSafety() {
@@ -251,6 +287,27 @@ struct EmergencyFeedTests {
         #expect(feed.notices.count == 3)
         feed.spot = Spot(latitude: 30, longitude: -97)
         #expect(feed.notices.isEmpty)
+    }
+
+    // sensitivityMovesAlerts moves the flash flood warning from the warnings to the notices at the tornado and civil
+    // sensitivity, and keeps it there through a failed read.
+    @Test func sensitivityMovesAlerts() async throws {
+        let reads = Reads()
+        reads.data = try recorded("weather-alerts")
+        let feed = feed(reads)
+        feed.sensitivity = .tornadoAndCivil
+        var rung: [[WeatherAlert]] = []
+        feed.onRing = { rung.append($0) }
+        let now = try #require(ISO8601DateFormatter().date(from: "2026-11-18T18:00:00-08:00"))
+        await feed.check(now: now)
+        #expect(feed.alerts.isEmpty)
+        #expect(feed.notices.map(\.event).contains("Flash Flood Warning"))
+        #expect(rung.isEmpty)
+        reads.data = nil
+        feed.sensitivity = .phone
+        await feed.check(now: now.addingTimeInterval(60))
+        #expect(feed.alerts.map(\.event) == ["Flash Flood Warning"])
+        #expect(!feed.notices.map(\.event).contains("Flash Flood Warning"))
     }
 
     // failedCheckKeepsWarnings keeps the known warnings through a failed read until they end.

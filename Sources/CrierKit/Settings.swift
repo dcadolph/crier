@@ -169,12 +169,35 @@ public enum EmergencyMode: String, Codable, CaseIterable, Sendable {
     }
 }
 
+// Sensitivity picks which local warnings sound and flash. The rest of the watches and warnings show as the quiet
+// orange line.
+public enum Sensitivity: String, Codable, CaseIterable, Sendable {
+    // phone sounds for what a phone in the area would ring for: alerts sent to phones, Extreme and Immediate
+    // alerts, catastrophic threats, and the life-safety list.
+    case phone
+    // stormAndFlood also sounds for severe thunderstorm and flood warnings.
+    case stormAndFlood
+    // tornadoAndCivil sounds only for tornado warnings and civil emergencies.
+    case tornadoAndCivil
+
+    // title names the choice in settings.
+    public var title: String {
+        switch self {
+        case .phone: "What my phone would ring for"
+        case .stormAndFlood: "Also severe thunderstorm and flood warnings"
+        case .tornadoAndCivil: "Only tornado and civil emergencies"
+        }
+    }
+}
+
 // EmergencyRules holds the emergency mode choices.
 public struct EmergencyRules: Codable, Sendable, Equatable {
     // mode picks which emergencies interrupt.
     public var mode = EmergencyMode.local
     // zip is the ZIP code that sets the reader's area. Empty means the Mac's location.
     public var zip = ""
+    // sensitivity picks which local warnings sound and flash.
+    public var sensitivity = Sensitivity.phone
     // sound plays the emergency sound for top tier emergencies.
     public var sound = true
     // flashing pulses the ticker for top tier emergencies.
@@ -190,6 +213,7 @@ public struct EmergencyRules: Codable, Sendable, Equatable {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         mode = (try? c.decodeIfPresent(EmergencyMode.self, forKey: .mode)) ?? mode
         zip = try c.decodeIfPresent(String.self, forKey: .zip) ?? zip
+        sensitivity = (try? c.decodeIfPresent(Sensitivity.self, forKey: .sensitivity)) ?? sensitivity
         sound = try c.decodeIfPresent(Bool.self, forKey: .sound) ?? sound
         flashing = try c.decodeIfPresent(Bool.self, forKey: .flashing) ?? flashing
         national = (try? c.decodeIfPresent(NationalRules.self, forKey: .national)) ?? national
