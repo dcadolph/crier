@@ -88,8 +88,9 @@ Crier can watch for National Weather Service warnings where you are. It checks e
 place you set, either a US ZIP code or, with no ZIP code, this Mac's location.
 
 - A warning the Weather Service sends to phones, such as a tornado warning or a flash flood warning with a
-  considerable threat, turns the ticker red, flashes it briefly, plays a sound you pick, and posts a
-  notification. A click stops the flashing and the sound. The red line stays until the warning ends or is
+  considerable threat, turns the ticker red, flashes it briefly, plays a sound you pick up to five times, and
+  posts a notification. A click on the red line, or on the warning in the bell menu, acknowledges it and stops
+  the sound. Until then the bell menu asks for that click. The red line stays until the warning ends or is
   canceled.
 - Other watches and warnings, such as a flood watch or a winter storm warning, show as a quiet orange line
   with no sound.
