@@ -11,6 +11,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
     case follows
     case feeds
     case alerts
+    case emergency
     case general
 
     // id identifies the tab in lists.
@@ -25,6 +26,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
         case .follows: "Follows"
         case .feeds: "Feeds"
         case .alerts: "Alerts"
+        case .emergency: "Emergency"
         case .general: "General"
         }
     }
@@ -38,6 +40,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
         case .follows: "star"
         case .feeds: "dot.radiowaves.up.forward"
         case .alerts: "bell.badge"
+        case .emergency: "exclamationmark.triangle"
         case .general: "gearshape"
         }
     }
@@ -52,6 +55,12 @@ struct SettingsView: View {
     var news: News
     // loginItem starts Crier at login.
     var loginItem: LoginItem
+    // siren holds the emergency in force and runs the test.
+    var siren: Siren
+    // feed polls the Weather Service.
+    var feed: EmergencyFeed
+    // locator finds the reader's area.
+    var locator: Locator
     // tab is the page on show.
     @State private var tab: SettingsTab = .ticker
     // trusted reports whether Crier may read the app menus, checked while the ticker page is open.
@@ -83,6 +92,7 @@ struct SettingsView: View {
         case .follows: followsPage
         case .feeds: feedsPage
         case .alerts: alertsPage
+        case .emergency: emergencyPage
         case .general: generalPage
         }
     }
@@ -346,6 +356,116 @@ struct SettingsView: View {
                 .foregroundStyle(.secondary)
         }
         .formStyle(.grouped)
+    }
+
+    // emergencyPage sets which emergencies interrupt, the reader's area, and how loudly.
+    private var emergencyPage: some View {
+        Form {
+            Picker("Emergency mode", selection: mode) {
+                ForEach(EmergencyMode.choices(national: AppDelegate.national), id: \.self) { mode in
+                    Text(mode.title).tag(mode)
+                }
+            }
+            .help("Local warnings come from the National Weather Service for your area, in the United States only.")
+            if store.settings.emergency.mode != .off {
+                TextField("US ZIP code", text: $store.settings.emergency.zip, prompt: Text("This Mac's location"))
+                    .help(
+                        "Leave it empty to use this Mac's location. A ZIP code is checked at its center, so a "
+                            + "warning that covers your home but not the center of your ZIP code may not show.")
+                LabeledContent("Area", value: areaText)
+                if locator.water {
+                    FailureNote(
+                        reason: "This spot is over water, so land warnings may miss it. Type a US ZIP code on land "
+                            + "nearby.")
+                }
+                Picker("Sound and flash for", selection: $store.settings.emergency.sensitivity) {
+                    ForEach(Sensitivity.allCases, id: \.self) { sensitivity in
+                        Text(sensitivity.title).tag(sensitivity)
+                    }
+                }
+                .help("Every other watch and warning for your area shows as the quiet orange line.")
+                Toggle("Play the emergency sound", isOn: $store.settings.emergency.sound)
+                    .help(
+                        "Crier plays its own sound for the top tier, even when notification sounds are off. A muted "
+                            + "Mac plays nothing.")
+                HStack {
+                    Picker("Sound", selection: $store.settings.emergency.soundName) {
+                        ForEach(Siren.sounds, id: \.self) { name in
+                            Text(name).tag(name)
+                        }
+                    }
+                    Button("Preview") {
+                        siren.preview()
+                    }
+                    .help("Play the sound once.")
+                }
+                .disabled(!store.settings.emergency.sound)
+                Toggle("Flash the ticker", isOn: $store.settings.emergency.flashing)
+                    .help("Three slow flashes, then steady red. Never when Reduce Motion is on.")
+                LabeledContent("Last good check", value: checkedText)
+                if let failure = feed.failure {
+                    FailureNote(reason: failure)
+                }
+                LabeledContent("In force", value: siren.pinned ?? "Nothing")
+                HStack(alignment: .firstTextBaseline) {
+                    Text(feed.status(place: locator.place, problem: locator.problem))
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Spacer()
+                    Button("Test Emergency Mode") {
+                        siren.test()
+                    }
+                    .disabled(siren.testing)
+                    .help("Show the red ticker, flash it, and play the sound, the way a real warning would.")
+                }
+            }
+            Text(footerText)
+                .font(.callout)
+                .foregroundStyle(.secondary)
+        }
+        .formStyle(.grouped)
+    }
+
+    // mode is the emergency mode as the picker shows it. Builds without the national tier show a stored national
+    // mode as local, the way they run it.
+    private var mode: Binding<EmergencyMode> {
+        Binding(
+            get: { store.settings.emergency.mode.effective(national: AppDelegate.national) },
+            set: { store.settings.emergency.mode = $0 })
+    }
+
+    // footerText explains what interrupts, what Crier cannot catch, and where the location goes.
+    private var footerText: String {
+        var text =
+            "Life-safety warnings for your area, such as a tornado warning, turn the ticker red, flash it, and "
+            + "play a sound, even in quiet hours. Watches and ordinary warnings, such as a flood watch, show "
+            + "as a quiet orange line with no sound. Advisories and statements never show."
+        if AppDelegate.national {
+            text +=
+                " National breaking news far bigger than major turns the ticker red without a sound, and only "
+                + "wars, declared national emergencies, martial law, and nuclear attacks sound."
+        }
+        return text
+            + "\n\nNot every alert a phone gets reaches Crier, and Crier checks only while this Mac is awake and "
+            + "online. Crier sends your approximate location to the National Weather Service to ask for warnings "
+            + "where you are. A typed ZIP code goes to Apple to find its center."
+    }
+
+    // areaText names the area warnings are checked for, or why there is none.
+    private var areaText: String {
+        if let problem = locator.problem {
+            return problem
+        }
+        if feed.outside {
+            return EmergencyFeed.outsideText
+        }
+        return locator.place ?? "Finding your area…"
+    }
+
+    // checkedText says when the Weather Service last answered.
+    private var checkedText: String {
+        feed.good?.formatted(date: .omitted, time: .shortened) ?? "Not yet"
     }
 
     // generalPage holds login, the refresh interval, and feed health.

@@ -82,6 +82,34 @@ With Accessibility permission, Crier reads where the frontmost app's menus end, 
 the bar never covers them. Without it, Crier keeps a fixed amount of room for the menus, which you can
 change in Settings.
 
+## Emergency mode
+
+Crier can watch for National Weather Service warnings where you are. It checks every two minutes for the
+place you set, either a US ZIP code or, with no ZIP code, this Mac's location.
+
+- A warning the Weather Service sends to phones, such as a tornado warning or a flash flood warning with a
+  considerable threat, turns the ticker red, flashes it briefly, plays a sound you pick, and posts a
+  notification. A click stops the flashing and the sound. The red line stays until the warning ends or is
+  canceled.
+- Other watches and warnings, such as a flood watch or a winter storm warning, show as a quiet orange line
+  with no sound.
+- A setting widens what sounds to severe thunderstorm and flood warnings, or narrows it to tornado and
+  civil emergencies only.
+
+Limits worth knowing:
+
+- It covers the United States only, since it reads the National Weather Service.
+- It is not a primary warning system. It checks only while the Mac is awake and online, and some alerts
+  your phone gets, such as evacuation orders sent straight from local officials, never reach the Weather
+  Service feed.
+- A ZIP code is checked at its center, so a narrow warning that covers your home but not that point can
+  be missed.
+- A muted Mac plays no sound.
+
+Privacy: to ask for warnings, Crier sends your approximate location, rounded to about a city block, to
+the National Weather Service. A typed ZIP code goes to Apple's geocoder to find that place. Nothing else
+leaves the Mac for emergency mode, and emergency mode off sends nothing.
+
 ## CrierKit
 
 The news engine and its SwiftUI views live in the `CrierKit` library, so another app can show the same

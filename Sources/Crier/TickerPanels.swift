@@ -11,6 +11,8 @@ final class TickerPanels: NSObject {
     private let store: SettingsStore
     // news holds the ticker entries.
     private let news: News
+    // siren holds the emergency in force.
+    private let siren: Siren
     // room measures what else takes space in the menu bar.
     private let room: BarRoom
     // panels holds each display's panels, left to right, keyed by display number.
@@ -26,9 +28,10 @@ final class TickerPanels: NSObject {
     }
 
     // init places the panels and follows display, space, and settings changes.
-    init(store: SettingsStore, news: News, room: BarRoom) {
+    init(store: SettingsStore, news: News, siren: Siren, room: BarRoom) {
         self.store = store
         self.news = news
+        self.siren = siren
         self.room = room
         super.init()
         room.onChange = { [weak self] in
@@ -58,14 +61,14 @@ final class TickerPanels: NSObject {
             clocks[display.id] = clock
             var list = panels[display.id] ?? []
             while list.count < frames.count {
-                list.append(TickerPanel(store: store, news: news, clock: clock))
+                list.append(TickerPanel(store: store, news: news, siren: siren, clock: clock))
             }
             while list.count > frames.count {
                 list.removeLast().retire()
             }
-            for (panel, frame) in zip(list, frames) {
+            for (index, (panel, frame)) in zip(list, frames).enumerated() {
                 panel.appearance = settings.place == .menuBar ? barAppearance : nil
-                panel.show(frame: frame, offset: frame.minX - bar.frame.minX)
+                panel.show(frame: frame, offset: frame.minX - bar.frame.minX, lead: index == 0)
             }
             panels[display.id] = list
         }
@@ -85,8 +88,9 @@ final class TickerPanel: NSPanel {
     private let host: NSHostingView<TickerRoot>
 
     // init builds the panel on the display's shared clock.
-    init(store: SettingsStore, news: News, clock: MarqueeClock) {
-        host = NSHostingView(rootView: TickerRoot(store: store, news: news, offset: 0, clock: clock))
+    init(store: SettingsStore, news: News, siren: Siren, clock: MarqueeClock) {
+        host = NSHostingView(
+            rootView: TickerRoot(store: store, news: news, siren: siren, offset: 0, lead: false, clock: clock))
         super.init(contentRect: .zero, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
         isOpaque = false
         backgroundColor = .clear
@@ -109,43 +113,105 @@ final class TickerPanel: NSPanel {
         contentView = nil
     }
 
-    // show places the panel and tells its ticker where it sits along the display's row.
-    func show(frame: CGRect, offset: CGFloat) {
+    // show places the panel and tells its ticker where it sits along the display's row and whether it is the
+    // display's leftmost panel, which carries the pinned emergency line.
+    func show(frame: CGRect, offset: CGFloat, lead: Bool) {
         let root = host.rootView
-        if root.offset != offset {
-            host.rootView = TickerRoot(store: root.store, news: root.news, offset: offset, clock: root.clock)
+        if root.offset != offset || root.lead != lead {
+            host.rootView = TickerRoot(
+                store: root.store, news: root.news, siren: root.siren, offset: offset, lead: lead, clock: root.clock)
         }
         setFrame(frame, display: true)
         orderFrontRegardless()
     }
 }
 
-// TickerRoot is a ticker panel's content: the ticker, on a bar backing when it sits in the strip.
+// TickerRoot is a ticker panel's content: the ticker, on a bar backing when it sits in the strip. The display's
+// leftmost panel pins the emergency line over the left end of the row, so the shared scroll keeps its place. For a
+// watch or an ordinary warning the line sits on an orange tab and the ticker keeps its look. From the red tier up
+// the panel turns red with white type.
 struct TickerRoot: View {
     // store holds the live settings.
     let store: SettingsStore
     // news holds the ticker entries.
     let news: News
+    // siren holds the emergency in force.
+    let siren: Siren
     // offset is the panel's left edge measured from its display's left edge.
     let offset: CGFloat
+    // lead reports whether this is the display's leftmost panel.
+    let lead: Bool
     // clock is the scroll the display's panels share.
     let clock: MarqueeClock
+
+    // reduceMotion follows the macOS Reduce Motion setting, which turns flashing off.
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    // emergencyRed fills the ticker during an emergency.
+    static let emergencyRed = Color(.sRGB, red: 0.78, green: 0.06, blue: 0.08)
+    // pinnedRed backs the pinned line from the red tier up.
+    static let pinnedRed = Color(.sRGB, red: 0.5, green: 0.02, blue: 0.04)
+    // noticeOrange backs the pinned line for a watch or an ordinary warning. It takes dark type, which reads
+    // better on orange than white does.
+    static let noticeOrange = Color(.sRGB, red: 0.98, green: 0.58, blue: 0.1)
+    // pulse is how long each half of a flash takes. Three pulses take three seconds, well under the limit of three
+    // flashes a second.
+    static let pulse = 0.5
 
     // body draws the ticker.
     var body: some View {
         let strip = store.settings.place == .belowMenuBar
+        let alarm = siren.tier >= .red
         TickerView(
-            entries: news.entries, speed: store.settings.speed, color: store.settings.tickerColor?.color,
-            offset: strip ? offset + 8 : offset, clock: clock
+            entries: news.entries, speed: store.settings.speed,
+            color: alarm ? .white : store.settings.tickerColor?.color, offset: strip ? offset + 8 : offset,
+            clock: clock
         )
         .padding(.horizontal, strip ? 8 : 0)
-        .background {
-            if strip {
-                Rectangle().fill(.bar)
-                    .overlay(alignment: .bottom) {
-                        Divider()
-                    }
+        .overlay(alignment: .leading) {
+            if siren.tier > .none, lead, let pinned = siren.pinned {
+                pinnedLine(pinned, quiet: siren.tier == .orange)
             }
+        }
+        .background {
+            ZStack {
+                if strip, !alarm {
+                    Rectangle().fill(.bar)
+                        .overlay(alignment: .bottom) {
+                            Divider()
+                        }
+                }
+                flashing(Rectangle().fill(Self.emergencyRed).opacity(alarm ? 1 : 0))
+            }
+        }
+    }
+
+    // pinnedLine draws the emergency line on a darker red tab, or on an orange tab when quiet. A click stops the
+    // sound, or opens the warning's page once the sound has stopped.
+    private func pinnedLine(_ text: String, quiet: Bool) -> some View {
+        Text(text)
+            .font(.system(size: 13, weight: .bold))
+            .foregroundStyle(quiet ? .black : .white)
+            .lineLimit(1)
+            .padding(.horizontal, 10)
+            .frame(maxHeight: .infinity)
+            .background(quiet ? Self.noticeOrange : Self.pinnedRed)
+            .contentShape(Rectangle())
+            .onTapGesture {
+                siren.click()
+            }
+            .help(siren.acknowledged ? "Open the details." : "Click to stop the sound.")
+    }
+
+    // flashing pulses a view three times on each top tier interruption, unless flashing is off in settings or
+    // macOS Reduce Motion is on. The animator stays in place between emergencies, so the first ring of a new
+    // emergency flashes too.
+    private func flashing(_ view: some View) -> some View {
+        let flash = store.settings.emergency.flashing && !reduceMotion && siren.tier == .top
+        return view.phaseAnimator([1.0, 0.25, 1.0, 0.25, 1.0, 0.25], trigger: siren.rings) { content, phase in
+            content.opacity(flash ? phase : 1)
+        } animation: { _ in
+            .easeInOut(duration: Self.pulse)
         }
     }
 }
