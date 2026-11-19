@@ -46,7 +46,7 @@ public struct Room: Sendable, Equatable {
     }
 }
 
-// Placement works out where the ticker panel goes.
+// Placement works out where the ticker panels go.
 public enum Placement {
     // stripHeight is the height of the strip below the menu bar.
     public static let stripHeight: CGFloat = 24
@@ -55,26 +55,29 @@ public enum Placement {
     // minWidth is the narrowest ticker worth showing. With less room than this the ticker hides.
     public static let minWidth: CGFloat = 120
 
-    // frame returns the ticker panel's frame, or nil when the menu bar is hidden or too full to hold the ticker.
-    public static func frame(bar: Bar, settings: Settings, room: Room = Room()) -> CGRect? {
+    // frames returns the ticker panels' frames, left to right, or none when the menu bar is hidden or too full to
+    // hold the ticker. Fill takes every open stretch on the position's side, so a ticker split by Fuginaut's clock
+    // or the notch runs on both sides of it. The strip and a fixed width take one frame.
+    public static func frames(bar: Bar, settings: Settings, room: Room = Room()) -> [CGRect] {
         guard bar.height > 0 else {
-            return nil
+            return []
         }
         let band = bar.band
         switch settings.place {
         case .belowMenuBar:
-            return CGRect(x: band.minX, y: band.minY - stripHeight, width: band.width, height: stripHeight)
+            return [CGRect(x: band.minX, y: band.minY - stripHeight, width: band.width, height: stripHeight)]
         case .menuBar:
             let open = spans(bar: bar, room: room)
             let anchor = band.midX + CGFloat(settings.offset)
-            let span =
+            let chosen =
                 settings.fill
                 ? filled(open, anchor: anchor, position: settings.position)
-                : fitted(open, anchor: anchor, position: settings.position, width: CGFloat(settings.width))
-            guard let span, span.width >= minWidth else {
-                return nil
+                : fitted(open, anchor: anchor, position: settings.position, width: CGFloat(settings.width)).map {
+                    [$0]
+                } ?? []
+            return chosen.filter { $0.width >= minWidth }.map {
+                CGRect(x: $0.lo, y: band.minY, width: $0.width, height: band.height)
             }
-            return CGRect(x: span.lo, y: band.minY, width: span.width, height: band.height)
         }
     }
 
@@ -119,9 +122,9 @@ public enum Placement {
         return open.filter { $0.width > 0 }
     }
 
-    // filled returns the widest open stretch on the position's side of the anchor, or anywhere for center.
-    static func filled(_ open: [Span], anchor: CGFloat, position: Position) -> Span? {
-        let pieces = open.compactMap { span -> Span? in
+    // filled returns the open stretches on the position's side of the anchor, or every one for center.
+    static func filled(_ open: [Span], anchor: CGFloat, position: Position) -> [Span] {
+        open.compactMap { span -> Span? in
             var piece = span
             switch position {
             case .center:
@@ -133,7 +136,6 @@ public enum Placement {
             }
             return piece.width > 0 ? piece : nil
         }
-        return pieces.max { $0.width < $1.width }
     }
 
     // fitted places a ticker of the given width at the position, then steps it the shortest way to an open

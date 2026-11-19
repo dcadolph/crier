@@ -7,6 +7,9 @@ import SwiftUI
 // The row is laid out once by SwiftUI and slid by a Core Animation layer animation, so the scroll runs in the
 // window server and costs the app almost nothing. It tracks the mouse and takes the first click whether or not
 // its app is active, so it works in a panel that never activates.
+//
+// Tickers that share a clock scroll as one: each shows the row at its offset from its display's left edge, so a
+// ticker split around Fuginaut's clock reads as one row passing behind it, and hovering either side holds both.
 public struct TickerView: View {
     // entries are the headlines to scroll.
     let entries: [Entry]
@@ -18,6 +21,10 @@ public struct TickerView: View {
     let font: Font
     // color draws the headlines, or nil for the primary label color.
     let color: Color?
+    // offset is the ticker's left edge measured from its display's left edge, which places it along a shared row.
+    let offset: CGFloat
+    // clock is the scroll this ticker shares with others, or nil for a ticker that scrolls on its own.
+    let clock: MarqueeClock?
     // onOpen runs when a headline is clicked. When nil, the headline's link opens in the browser.
     let onOpen: ((Entry) -> Void)?
 
@@ -27,13 +34,15 @@ public struct TickerView: View {
     // init builds a ticker.
     public init(
         entries: [Entry], speed: Double = 40, paused: Bool = false, font: Font = .system(size: 13),
-        color: Color? = nil, onOpen: ((Entry) -> Void)? = nil
+        color: Color? = nil, offset: CGFloat = 0, clock: MarqueeClock? = nil, onOpen: ((Entry) -> Void)? = nil
     ) {
         self.entries = entries
         self.speed = speed
         self.paused = paused
         self.font = font
         self.color = color
+        self.offset = offset
+        self.clock = clock
         self.onOpen = onOpen
     }
 
@@ -45,7 +54,9 @@ public struct TickerView: View {
                 .foregroundStyle(color.map { AnyShapeStyle($0.opacity(0.6)) } ?? AnyShapeStyle(.secondary))
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
-            MarqueeRepresentable(entries: entries, speed: speed, paused: paused, font: font, color: color) { entry in
+            MarqueeRepresentable(
+                entries: entries, speed: speed, paused: paused, font: font, color: color, offset: offset, clock: clock
+            ) { entry in
                 if let onOpen {
                     onOpen(entry)
                 } else {
@@ -68,8 +79,24 @@ struct MarqueeRepresentable: NSViewRepresentable {
     let font: Font
     // color draws the headlines, or nil for the primary label color.
     let color: Color?
+    // offset is the marquee's left edge measured from its display's left edge.
+    let offset: CGFloat
+    // clock is the shared scroll, or nil to use the marquee's own.
+    let clock: MarqueeClock?
     // open runs when a headline is clicked.
     let open: (Entry) -> Void
+
+    // Coordinator holds the clock a marquee uses when it shares none.
+    @MainActor
+    final class Coordinator {
+        // clock is the marquee's own scroll.
+        let clock = MarqueeClock()
+    }
+
+    // makeCoordinator builds the marquee's own clock.
+    func makeCoordinator() -> Coordinator {
+        Coordinator()
+    }
 
     // makeNSView builds the marquee.
     func makeNSView(context: Context) -> MarqueeView {
@@ -81,7 +108,9 @@ struct MarqueeRepresentable: NSViewRepresentable {
     func updateNSView(_ view: MarqueeView, context: Context) {
         view.open = open
         view.appearance = NSAppearance(named: context.environment.colorScheme == .dark ? .darkAqua : .aqua)
-        view.update(entries: entries, font: font, color: color, speed: speed, paused: paused)
+        let clock = clock ?? context.coordinator.clock
+        view.update(entries: entries, font: font, color: color, offset: offset, clock: clock)
+        clock.configure(speed: speed, paused: paused)
     }
 }
 
@@ -92,16 +121,17 @@ final class Spans {
     var frames: [String: CGRect] = [:]
 }
 
-// MarqueeView draws the row twice, side by side, and slides both left, so the second copy takes the first's
-// place the moment it scrolls out of sight.
+// MarqueeView draws copies of the row side by side and slides them left one copy's width at a time, so the next
+// copy takes the first's place the moment it scrolls out of sight. Where the row sits comes from the clock.
 final class MarqueeView: NSView {
     // open runs when a headline is clicked.
     var open: ((Entry) -> Void)?
 
-    // strip holds the two copies of the row and carries the scroll animation.
+    // strip holds the copies of the row and carries the scroll animation.
     private let strip = NSView()
     // host draws the row with SwiftUI.
-    private let host = NSHostingView(rootView: MarqueeRow(entries: [], font: .body, color: nil, spans: Spans()))
+    private let host = NSHostingView(
+        rootView: MarqueeRow(entries: [], font: .body, color: nil, copies: 2, spans: Spans()))
     // fade softens both ends.
     private let fade = CAGradientLayer()
     // spans records where each headline sits.
@@ -112,12 +142,12 @@ final class MarqueeView: NSView {
     private var font = Font.body
     // color draws the headlines, or nil for the primary label color.
     private var color: Color?
-    // speed is how fast headlines scroll, in points per second.
-    private var speed = 40.0
-    // paused holds the ticker still at the caller's request.
-    private var paused = false
-    // hovered reports whether the mouse is over the ticker.
-    private var hovered = false
+    // offset is the marquee's left edge measured from its display's left edge.
+    private var offset: CGFloat = 0
+    // clock is the scroll the marquee follows.
+    private var clock: MarqueeClock?
+    // copies is how many copies of the row the strip holds.
+    private var copies = 2
     // width is the width of one copy of the row.
     private var width: CGFloat = 0
     // tracking is the area that reports the mouse.
@@ -147,32 +177,65 @@ final class MarqueeView: NSView {
         nil
     }
 
-    // held reports whether the ticker stands still.
-    private var held: Bool {
-        paused || hovered
-    }
-
-    // update takes new entries and settings, keeping the scroll's place.
-    func update(entries: [Entry], font: Font, color: Color?, speed: Double, paused: Bool) {
-        let phase = currentPhase()
+    // update takes new entries, the marquee's place along the row, and the clock it follows.
+    func update(entries: [Entry], font: Font, color: Color?, offset: CGFloat, clock: MarqueeClock) {
+        attach(clock)
         let changed = entries != self.entries || font != self.font || color != self.color
+        let moved = offset != self.offset
         self.entries = entries
         self.font = font
         self.color = color
-        self.speed = speed
-        self.paused = paused
+        self.offset = offset
         if changed {
             spans.frames = [:]
-            host.rootView = MarqueeRow(entries: entries, font: font, color: color, spans: spans)
+            host.rootView = row()
             measure()
         }
-        run(from: phase)
+        if changed || moved {
+            run()
+        }
+    }
+
+    // attach follows a clock, leaving any earlier one.
+    private func attach(_ clock: MarqueeClock) {
+        guard clock !== self.clock else {
+            return
+        }
+        self.clock?.stop(self)
+        self.clock = clock
+        listen()
+    }
+
+    // listen restarts the scroll whenever the clock changes.
+    private func listen() {
+        clock?.listen(self) { [weak self] in
+            self?.run()
+        }
+    }
+
+    // viewDidMoveToWindow leaves the clock when the marquee leaves its window, so a panel taken away while the
+    // mouse was over it does not hold the others, and follows it again on return.
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        if window == nil {
+            clock?.stop(self)
+        } else {
+            listen()
+            run()
+        }
+    }
+
+    // row builds the row's view with the current entries and copy count.
+    private func row() -> MarqueeRow {
+        MarqueeRow(entries: entries, font: font, color: color, copies: copies, spans: spans)
     }
 
     // layout centers the row vertically and fits the fade to the bounds.
     override func layout() {
         super.layout()
-        measure()
+        if measure() {
+            run()
+        }
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         fade.frame = bounds
@@ -181,56 +244,50 @@ final class MarqueeView: NSView {
         CATransaction.commit()
     }
 
-    // measure sizes the row to fit and records one copy's width.
-    private func measure() {
-        let size = host.fittingSize
+    // measure sizes the row to fit, with enough copies to cover the marquee, and records one copy's width. It
+    // reports whether the copy's width or count changed.
+    @discardableResult
+    private func measure() -> Bool {
+        var size = host.fittingSize
+        var one = size.width / CGFloat(copies)
+        let need = Scroll.copies(width: one, panel: bounds.width)
+        let grew = need != copies
+        if grew {
+            copies = need
+            host.rootView = row()
+            size = host.fittingSize
+            one = size.width / CGFloat(copies)
+        }
         let height = max(size.height, 1)
         let y = ((bounds.height - height) / 2).rounded()
         host.frame = CGRect(x: 0, y: 0, width: size.width, height: height)
         strip.frame = CGRect(x: strip.frame.minX, y: y, width: size.width, height: height)
-        let half = size.width / 2
-        if abs(half - width) > 0.5 {
-            let phase = currentPhase()
-            width = half
-            run(from: phase)
+        let changed = abs(one - width) > 0.5
+        if changed {
+            width = one
         }
+        return changed || grew
     }
 
-    // currentPhase returns how far into one copy the row has scrolled.
-    private func currentPhase() -> CGFloat {
-        let shift: CGFloat
-        if strip.layer?.animation(forKey: Self.key) != nil,
-            let value = strip.layer?.presentation()?.value(forKeyPath: "transform.translation.x") as? CGFloat
-        {
-            shift = -value
-        } else {
-            shift = -strip.frame.minX
-        }
-        guard width > 0 else {
-            return 0
-        }
-        let phase = shift.truncatingRemainder(dividingBy: width)
-        return phase < 0 ? phase + width : phase
-    }
-
-    // run starts the scroll from the given phase, or holds the row there while the ticker is held.
-    private func run(from phase: CGFloat) {
-        guard let layer = strip.layer else {
+    // run starts the scroll in step with the clock, or holds the row where the clock stopped it.
+    private func run() {
+        guard let layer = strip.layer, let clock else {
             return
         }
         layer.removeAnimation(forKey: Self.key)
-        guard width > 0, speed > 0, !held else {
-            strip.frame.origin.x = -phase
+        let scroll = clock.scroll
+        guard width > 0, scroll.moving else {
+            strip.frame.origin.x = -scroll.phase(at: MarqueeClock.now, offset: offset, width: width)
             return
         }
         strip.frame.origin.x = 0
-        let duration = Double(width) / speed
         let animation = CABasicAnimation(keyPath: "transform.translation.x")
         animation.fromValue = 0
         animation.toValue = -width
-        animation.duration = duration
+        animation.duration = Double(width) / scroll.speed
         animation.repeatCount = .infinity
-        animation.timeOffset = Double(phase) / speed
+        animation.beginTime = layer.convertTime(scroll.start, from: nil)
+        animation.timeOffset = Double(scroll.phase(at: scroll.start, offset: offset, width: width)) / scroll.speed
         layer.add(animation, forKey: Self.key)
     }
 
@@ -247,18 +304,14 @@ final class MarqueeView: NSView {
         tracking = area
     }
 
-    // mouseEntered holds the ticker.
+    // mouseEntered holds every ticker on the clock.
     override func mouseEntered(with event: NSEvent) {
-        let phase = currentPhase()
-        hovered = true
-        run(from: phase)
+        clock?.hover(self, true)
     }
 
-    // mouseExited lets the ticker run again.
+    // mouseExited lets them run again once the mouse is off all of them.
     override func mouseExited(with event: NSEvent) {
-        let phase = currentPhase()
-        hovered = false
-        run(from: phase)
+        clock?.hover(self, false)
     }
 
     // hitTest claims every point inside the view, so clicks come here rather than to the row.
@@ -276,14 +329,11 @@ final class MarqueeView: NSView {
 
     // mouseUp opens the headline under the pointer.
     override func mouseUp(with event: NSEvent) {
-        guard width > 0 else {
+        guard width > 0, let clock else {
             return
         }
         let point = convert(event.locationInWindow, from: nil)
-        var x = (point.x + currentPhase()).truncatingRemainder(dividingBy: width)
-        if x < 0 {
-            x += width
-        }
+        let x = clock.scroll.position(of: point.x, at: MarqueeClock.now, offset: offset, width: width)
         let hit = entries.first { entry in
             guard let frame = spans.frames[entry.id] else {
                 return false
@@ -296,7 +346,7 @@ final class MarqueeView: NSView {
     }
 }
 
-// MarqueeRow lays out every entry twice, side by side.
+// MarqueeRow lays out copies of the entries side by side.
 struct MarqueeRow: View {
     // entries are the headlines to lay out.
     let entries: [Entry]
@@ -304,17 +354,20 @@ struct MarqueeRow: View {
     let font: Font
     // color draws the headlines, or nil for the primary label color.
     let color: Color?
+    // copies is how many copies of the entries to draw.
+    let copies: Int
     // spans receives where each headline sits in the first copy.
     let spans: Spans
 
     // space names the row's coordinate space.
     nonisolated private static let space = "row"
 
-    // body draws both copies.
+    // body draws every copy.
     var body: some View {
         HStack(spacing: 0) {
-            copy(report: true)
-            copy(report: false)
+            ForEach(0..<max(copies, 1), id: \.self) { index in
+                copy(report: index == 0)
+            }
         }
         .fixedSize()
         .foregroundStyle(color.map(AnyShapeStyle.init) ?? AnyShapeStyle(.primary))

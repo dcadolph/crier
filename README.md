@@ -22,11 +22,12 @@ Crier is free. It is a work in progress.
   and no repeats.
 - Keeps the teams and subjects you follow in the ticker.
 - Fills the open menu bar with the ticker by default, or sets it at a fixed width at the center, left of
-  center, or right of center. It steps around the notch and around the clock from Fuginaut, and stays
-  clear of the status icons.
+  center, or right of center. It stays clear of the status icons. A filling ticker runs on both sides of
+  the notch and of the clock from Fuginaut, with headlines passing behind them. A fixed width ticker steps
+  around them.
 - Opens a window with the top stories in rotating columns over the full headline list.
 
-Hover over the ticker to hold it still. Click a headline to open it.
+Hover over the ticker to hold it still, both sides at once when it is split. Click a headline to open it.
 
 ## Install
 
