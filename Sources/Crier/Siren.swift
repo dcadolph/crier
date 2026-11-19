@@ -17,7 +17,8 @@ final class Siren {
     private(set) var stories: [(headline: Headline, tier: Tier)] = []
     // rings counts top tier interruptions, so every ticker flashes together when it changes.
     private(set) var rings = 0
-    // acknowledged reports whether the reader clicked the latest interruption, which stops its sound.
+    // acknowledged reports whether the reader clicked the latest interruption. It stays false after the sound
+    // runs out, so the interruption waits for a click until it ends.
     private(set) var acknowledged = true
     // testing reports whether a test emergency is showing.
     private(set) var testing = false
@@ -83,7 +84,7 @@ final class Siren {
     var pinned: String? {
         if testing {
             return store.settings.emergency.sound
-                ? "TEST: A real warning looks like this and plays this sound until you click."
+                ? "TEST: A real warning looks like this and plays this sound up to five times until you click."
                 : "TEST: A real warning looks like this. The emergency sound is off in Settings."
         }
         if let warning = warnings.first {
@@ -117,9 +118,7 @@ final class Siren {
         warnings = active
         withdraw(keeping: active)
         guard let newest = new.first else {
-            if active.isEmpty {
-                stopSound()
-            }
+            quietIfDone()
             return
         }
         ring()
@@ -152,6 +151,7 @@ final class Siren {
         let fresh = loud.filter { story in !rung.contains { Coverage.same($0, story.keywords) } }
         rung += fresh.map(\.keywords)
         guard !first, let story = fresh.first else {
+            quietIfDone()
             return
         }
         ring()
@@ -182,6 +182,7 @@ final class Siren {
                 return
             }
             self?.endTest()
+            self?.quietIfDone()
         }
     }
 
@@ -205,7 +206,6 @@ final class Siren {
         rings += 1
         sounding?.cancel()
         guard store.settings.emergency.sound else {
-            acknowledged = true
             return
         }
         sounding = Task { [weak self] in
@@ -216,7 +216,7 @@ final class Siren {
                 self?.chosenSound()?.play()
                 try? await Task.sleep(for: Self.gap)
             }
-            self?.acknowledged = true
+            self?.sounding = nil
         }
     }
 
@@ -239,6 +239,14 @@ final class Siren {
         sounding?.cancel()
         sounding = nil
         acknowledged = true
+    }
+
+    // quietIfDone marks the interruption acknowledged once nothing loud is left: no test, no warning, and no top
+    // tier story, so a quiet notice never asks for a click.
+    private func quietIfDone() {
+        if !testing, warnings.isEmpty, !stories.contains(where: { $0.tier == .top }) {
+            stopSound()
+        }
     }
 
     // endTest takes the test emergency down.

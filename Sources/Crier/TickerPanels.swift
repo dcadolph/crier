@@ -200,7 +200,7 @@ struct TickerRoot: View {
             .onTapGesture {
                 siren.click()
             }
-            .help(siren.acknowledged ? "Open the details." : "Click to stop the sound.")
+            .help(siren.acknowledged ? "Open the details." : "Click to acknowledge and stop the sound.")
     }
 
     // flashing pulses a view three times on each top tier interruption, unless flashing is off in settings or
