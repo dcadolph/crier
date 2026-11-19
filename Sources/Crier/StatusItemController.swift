@@ -24,6 +24,11 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     // emergency returns the menu's emergency line and what a click on it does, or nil while emergency mode is off.
     var emergency: () -> (title: String, click: (() -> Void)?)? = { nil }
 
+    #if CRIER_DRILL
+        // drill starts a tornado drill, or is nil when no drill can run because emergency mode has no place yet.
+        var drill: () -> (() -> Void)? = { nil }
+    #endif
+
     // menuHeadlines is how many headlines the menu lists.
     static let menuHeadlines = 10
     // titleLimit is the longest headline the menu shows before cutting it short.
@@ -122,6 +127,12 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         menu.addItem(refresh)
         menu.addItem(disabled(updatedText()))
         menu.addItem(.separator())
+        #if CRIER_DRILL
+            let drill = NSMenuItem(title: "Run Tornado Drill", action: #selector(drillChosen), keyEquivalent: "")
+            drill.target = self
+            drill.isEnabled = self.drill() != nil
+            menu.addItem(drill)
+        #endif
         let settings = NSMenuItem(title: "Settings…", action: #selector(settingsChosen), keyEquivalent: ",")
         settings.target = self
         menu.addItem(settings)
@@ -181,6 +192,13 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     @objc private func toggleTicker() {
         store.settings.tickerOn.toggle()
     }
+
+    #if CRIER_DRILL
+        // drillChosen starts a tornado drill.
+        @objc private func drillChosen() {
+            drill()?()
+        }
+    #endif
 
     // emergencyChosen runs the emergency line's click, which acknowledges the warning or opens its page.
     @objc private func emergencyChosen() {

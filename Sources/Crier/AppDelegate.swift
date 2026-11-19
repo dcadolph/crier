@@ -14,8 +14,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var news: News?
     // notifier posts major story alerts.
     private var notifier: Notifier?
-    // feed polls the Weather Service for warnings at the reader's spot.
-    private let feed = EmergencyFeed()
+    #if CRIER_DRILL
+        // drill serves a recorded tornado warning chain through the feed on demand, in drill builds only.
+        private let drill = Drill()
+        // drilling reads the feed every few seconds while a drill runs.
+        private var drilling: Task<Void, Never>?
+        // feed polls the Weather Service for warnings at the reader's spot, or serves the drill while one runs.
+        private lazy var feed = EmergencyFeed(fetch: drill.fetch)
+    #else
+        // feed polls the Weather Service for warnings at the reader's spot.
+        private let feed = EmergencyFeed()
+    #endif
     // locator finds the reader's spot.
     private let locator = Locator()
     // siren interrupts for emergencies.
@@ -86,6 +95,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         news.start()
     }
 
+    #if CRIER_DRILL
+        // runDrill starts a tornado drill and reads the feed every five seconds until it ends, so each step of the
+        // chain shows within seconds.
+        private func runDrill() {
+            drill.begin()
+            drilling?.cancel()
+            drilling = Task { [weak self] in
+                for _ in 0...Int(Drill.length / 5) + 1 {
+                    await self?.feed.check()
+                    try? await Task.sleep(for: .seconds(5))
+                }
+            }
+        }
+    #endif
+
     #if CRIER_MEASURE
         // measure hands the refresh's biggest headlines to the measuring log.
         private func measure(_ headlines: [Headline]) {
@@ -127,6 +151,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // startEmergencies wires the spot to the Weather Service feed, the feed to the siren, and the siren to the
     // bell, then starts polling when emergency mode is on.
     private func startEmergencies(siren: Siren, statusItem: StatusItemController) {
+        #if CRIER_DRILL
+            statusItem.drill = { [weak self] in
+                guard let self, self.store.settings.emergency.mode != .off, self.feed.spot != nil else {
+                    return nil
+                }
+                return { self.runDrill() }
+            }
+        #endif
         locator.onSpot = { [weak self] spot in
             guard let self, self.store.settings.emergency.mode != .off else {
                 return

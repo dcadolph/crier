@@ -9,12 +9,15 @@ ZIP ?= .build/Crier.zip
 DMG ?= .build/Crier.dmg
 DMGBUILD ?= dmgbuild
 FORMAT_PATHS := Package.swift Sources Tests
+# SWIFT_FLAGS adds compiler flags to the app build. The dev target sets CRIER_MEASURE and CRIER_DRILL, and releases
+# never do.
+SWIFT_FLAGS ?=
 
 ICON := art/app-icon.png
 ICONSET := .build/AppIcon.iconset
 ICNS := .build/AppIcon.icns
 
-.PHONY: build test lint format app zip dmg run clean
+.PHONY: build test lint format app zip dmg run dev clean
 
 build:
 	swift build -Xswiftc -warnings-as-errors
@@ -38,10 +41,10 @@ $(ICNS): $(ICON)
 	iconutil -c icns $(ICONSET) -o $(ICNS)
 
 app: $(ICNS)
-	swift build -c release -Xswiftc -warnings-as-errors $(ARCH_FLAGS)
+	swift build -c release -Xswiftc -warnings-as-errors $(SWIFT_FLAGS) $(ARCH_FLAGS)
 	rm -rf $(APP)
 	mkdir -p $(APP)/Contents/MacOS $(APP)/Contents/Resources
-	cp "$$(swift build -c release -Xswiftc -warnings-as-errors $(ARCH_FLAGS) --show-bin-path)/Crier" \
+	cp "$$(swift build -c release -Xswiftc -warnings-as-errors $(SWIFT_FLAGS) $(ARCH_FLAGS) --show-bin-path)/Crier" \
 		$(APP)/Contents/MacOS/Crier
 	cp Sources/Crier/Info.plist $(APP)/Contents/Info.plist
 	cp $(ICNS) $(APP)/Contents/Resources/AppIcon.icns
@@ -59,6 +62,13 @@ dmg:
 	$(if $(filter-out -,$(SIGN_ID)),codesign --force --sign "$(SIGN_ID)" --timestamp $(DMG))
 
 run: app
+	-pkill -x Crier
+	open $(APP)
+
+# dev builds and launches the dev app with the measuring log, which writes the biggest headlines of every refresh to
+# ~/Library/Application Support/Crier/measure, and the Run Tornado Drill item in the bell menu.
+dev:
+	$(MAKE) app SWIFT_FLAGS="-Xswiftc -DCRIER_MEASURE -Xswiftc -DCRIER_DRILL"
 	-pkill -x Crier
 	open $(APP)
 
