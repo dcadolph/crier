@@ -262,15 +262,17 @@ struct EmergencyFeedTests {
         var urls: [URL] = []
     }
 
-    // feed builds a feed that answers from reads.
+    // feed builds a running feed that answers from reads.
     private func feed(_ reads: Reads) -> EmergencyFeed {
-        EmergencyFeed(spot: Spot(latitude: 37, longitude: -122)) { url in
+        let feed = EmergencyFeed(spot: Spot(latitude: 37, longitude: -122)) { url in
             reads.urls.append(url)
             guard let data = reads.data else {
                 throw URLError(.notConnectedToInternet)
             }
             return data
         }
+        feed.running = true
+        return feed
     }
 
     // firstWarning returns the recorded tornado warning that went to phones.

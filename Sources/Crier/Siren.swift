@@ -34,6 +34,9 @@ final class Siren {
     @ObservationIgnored private var sounding: Task<Void, Never>?
     // test ends the test emergency.
     @ObservationIgnored private var testEnd: Task<Void, Never>?
+    // posted maps each emergency notification still on screen to the alert identifiers of its warning, so it can
+    // be withdrawn when that warning ends.
+    @ObservationIgnored private var posted: [String: Set<String>] = [:]
 
     // sounds are the names of the system sounds the reader can pick, from the system's sounds and the reader's
     // own, sorted and without repeats.
@@ -79,7 +82,9 @@ final class Siren {
     // newest notice.
     var pinned: String? {
         if testing {
-            return "TEST: emergency mode is working. Click to stop the sound."
+            return store.settings.emergency.sound
+                ? "TEST: A real warning looks like this and plays this sound until you click."
+                : "TEST: A real warning looks like this. The emergency sound is off in Settings."
         }
         if let warning = warnings.first {
             return line(warning, loud: true)
@@ -106,9 +111,11 @@ final class Siren {
         notices = active
     }
 
-    // warn takes the warnings in force and rings for the new ones.
+    // warn takes the warnings in force, rings for the new ones, and withdraws the notifications of the ones that
+    // ended.
     func warn(_ active: [WeatherAlert], new: [WeatherAlert]) {
         warnings = active
+        withdraw(keeping: active)
         guard let newest = new.first else {
             if active.isEmpty {
                 stopSound()
@@ -119,6 +126,21 @@ final class Siren {
         notifier.postEmergency(
             id: newest.id, title: line(newest, loud: true),
             body: newest.instruction ?? newest.headline ?? newest.area, link: link)
+        posted[newest.id] = Set([newest.id] + newest.references)
+    }
+
+    // withdraw takes down the notification of every warning no longer in force. An update to a warning keeps its
+    // notification, since the update names the earlier alert in its references.
+    private func withdraw(keeping active: [WeatherAlert]) {
+        let live = Set(active.flatMap { [$0.id] + $0.references })
+        let ended = posted.filter { $0.value.isDisjoint(with: live) }.map(\.key)
+        guard !ended.isEmpty else {
+            return
+        }
+        notifier.withdrawEmergency(ids: ended)
+        for id in ended {
+            posted[id] = nil
+        }
     }
 
     // read takes the latest headlines and rings for a national top tier story that has not sounded yet. The first
@@ -139,8 +161,9 @@ final class Siren {
             link: story.lead.link)
     }
 
-    // clear drops every emergency, as when emergency mode is turned off.
+    // clear drops every emergency and withdraws their notifications, as when emergency mode is turned off.
     func clear() {
+        withdraw(keeping: [])
         warnings = []
         notices = []
         stories = []

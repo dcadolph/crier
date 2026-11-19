@@ -167,13 +167,24 @@ public enum EmergencyMode: String, Codable, CaseIterable, Sendable {
         case .localAndNational: "Local warnings and national breaking news"
         }
     }
+
+    // choices are the modes settings offer. The national mode shows only when national is true, since the outlet
+    // counts it rings at are not measured yet.
+    public static func choices(national: Bool) -> [EmergencyMode] {
+        national ? allCases : allCases.filter { $0 != .localAndNational }
+    }
+
+    // effective returns the mode Crier runs. A stored national mode runs as local when national is false.
+    public func effective(national: Bool) -> EmergencyMode {
+        self == .localAndNational && !national ? .local : self
+    }
 }
 
 // Sensitivity picks which local warnings sound and flash. The rest of the watches and warnings show as the quiet
 // orange line.
 public enum Sensitivity: String, Codable, CaseIterable, Sendable {
-    // phone sounds for what a phone in the area would ring for: alerts sent to phones, Extreme and Immediate
-    // alerts, catastrophic threats, and the life-safety list.
+    // phone sounds for the alerts the Weather Service sends to phones, Extreme and Immediate alerts, considerable or
+    // catastrophic tornado and flash flood threats, destructive thunderstorm threats, and the life-safety list.
     case phone
     // stormAndFlood also sounds for severe thunderstorm and flood warnings.
     case stormAndFlood
@@ -183,7 +194,7 @@ public enum Sensitivity: String, Codable, CaseIterable, Sendable {
     // title names the choice in settings.
     public var title: String {
         switch self {
-        case .phone: "What my phone would ring for"
+        case .phone: "Weather Service alerts sent to phones"
         case .stormAndFlood: "Also severe thunderstorm and flood warnings"
         case .tornadoAndCivil: "Only tornado and civil emergencies"
         }

@@ -29,8 +29,8 @@
 	<key>NSHighResolutionCapable</key>
 	<true/>
 	<key>NSLocationUsageDescription</key>
-	<string>Crier checks for life-safety warnings, such as tornado warnings, where you are. Your location stays on this Mac. You can type a ZIP code in Settings instead.</string>
+	<string>Crier checks for life-safety warnings, such as tornado warnings, where you are. It sends your approximate location to the National Weather Service to ask for warnings there. You can type a US ZIP code in Settings instead.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>Crier checks for life-safety warnings, such as tornado warnings, where you are. Your location stays on this Mac. You can type a ZIP code in Settings instead.</string>
+	<string>Crier checks for life-safety warnings, such as tornado warnings, where you are. It sends your approximate location to the National Weather Service to ask for warnings there. You can type a US ZIP code in Settings instead.</string>
 </dict>
 </plist>

@@ -2,8 +2,8 @@ import AppKit
 
 import CrierKit
 
-// StatusItemController owns the menu bar bell and its menu: the top headlines, Crier's window, the ticker
-// switch, a refresh, when the news was last read, settings, and quit.
+// StatusItemController owns the menu bar bell and its menu: the emergency line while emergency mode is on, the top
+// headlines, Crier's window, the ticker switch, a refresh, when the news was last read, settings, and quit.
 @MainActor
 final class StatusItemController: NSObject, NSMenuDelegate {
     // item is the menu bar icon.
@@ -18,6 +18,11 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     private let openSettings: () -> Void
     // appearanceWatch follows the menu bar's appearance through the bell's button.
     private var appearanceWatch: NSKeyValueObservation?
+    // emergencyClick is what a click on the menu's emergency line does, or nil when the line only shows text.
+    private var emergencyClick: (() -> Void)?
+
+    // emergency returns the menu's emergency line and what a click on it does, or nil while emergency mode is off.
+    var emergency: () -> (title: String, click: (() -> Void)?)? = { nil }
 
     // menuHeadlines is how many headlines the menu lists.
     static let menuHeadlines = 10
@@ -78,9 +83,19 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         }
     }
 
-    // menuNeedsUpdate rebuilds the menu each time it opens, so it always shows the latest news.
+    // menuNeedsUpdate rebuilds the menu each time it opens, so it always shows the latest news. While emergency
+    // mode is on, its first line names the warning in force, the area watched, or why nothing is watched.
     func menuNeedsUpdate(_ menu: NSMenu) {
         menu.removeAllItems()
+        emergencyClick = nil
+        if let line = emergency() {
+            let item = NSMenuItem(title: line.title, action: #selector(emergencyChosen), keyEquivalent: "")
+            item.target = self
+            item.isEnabled = line.click != nil
+            emergencyClick = line.click
+            menu.addItem(item)
+            menu.addItem(.separator())
+        }
         let entries = news.entries.prefix(Self.menuHeadlines)
         if entries.isEmpty {
             menu.addItem(disabled("No headlines yet"))
@@ -165,6 +180,11 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     // toggleTicker shows or hides the ticker.
     @objc private func toggleTicker() {
         store.settings.tickerOn.toggle()
+    }
+
+    // emergencyChosen runs the emergency line's click, which acknowledges the warning or opens its page.
+    @objc private func emergencyChosen() {
+        emergencyClick?()
     }
 
     // refreshNow reads the feeds at once.

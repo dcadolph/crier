@@ -105,6 +105,14 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
         }
     }
 
+    // withdrawEmergency takes the emergency notifications for the given alert identifiers out of Notification
+    // Center, as when their warnings end or are canceled.
+    func withdrawEmergency(ids: [String]) {
+        let identifiers = ids.map { "emergency:\($0)" }
+        center.removeDeliveredNotifications(withIdentifiers: identifiers)
+        center.removePendingNotificationRequests(withIdentifiers: identifiers)
+    }
+
     // userNotificationCenter shows alerts even while Crier is the active app.
     nonisolated func userNotificationCenter(
         _ center: UNUserNotificationCenter, willPresent notification: UNNotification
