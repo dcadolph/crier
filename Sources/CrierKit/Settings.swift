@@ -150,6 +150,52 @@ public struct AlertRules: Codable, Sendable, Equatable {
     public init() {}
 }
 
+// EmergencyMode picks which emergencies interrupt.
+public enum EmergencyMode: String, Codable, CaseIterable, Sendable {
+    // off never interrupts for an emergency.
+    case off
+    // local interrupts for life-safety warnings that cover the reader's area.
+    case local
+    // localAndNational also interrupts for national stories far bigger than major.
+    case localAndNational
+
+    // title names the mode in settings.
+    public var title: String {
+        switch self {
+        case .off: "Off"
+        case .local: "Local warnings"
+        case .localAndNational: "Local warnings and national breaking news"
+        }
+    }
+}
+
+// EmergencyRules holds the emergency mode choices.
+public struct EmergencyRules: Codable, Sendable, Equatable {
+    // mode picks which emergencies interrupt.
+    public var mode = EmergencyMode.local
+    // zip is the ZIP code that sets the reader's area. Empty means the Mac's location.
+    public var zip = ""
+    // sound plays the emergency sound for top tier emergencies.
+    public var sound = true
+    // flashing pulses the ticker for top tier emergencies.
+    public var flashing = true
+    // national decides when a national story counts as an emergency.
+    public var national = NationalRules()
+
+    // init builds the default emergency choices.
+    public init() {}
+
+    // init decodes the stored fields and defaults the missing ones.
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        mode = (try? c.decodeIfPresent(EmergencyMode.self, forKey: .mode)) ?? mode
+        zip = try c.decodeIfPresent(String.self, forKey: .zip) ?? zip
+        sound = try c.decodeIfPresent(Bool.self, forKey: .sound) ?? sound
+        flashing = try c.decodeIfPresent(Bool.self, forKey: .flashing) ?? flashing
+        national = (try? c.decodeIfPresent(NationalRules.self, forKey: .national)) ?? national
+    }
+}
+
 // Settings holds every choice the reader makes.
 public struct Settings: Codable, Sendable, Equatable {
     // tickerOn shows the ticker.
@@ -191,6 +237,8 @@ public struct Settings: Codable, Sendable, Equatable {
     public var rotationSeconds = 30.0
     // alerts are the major story alert rules.
     public var alerts = AlertRules()
+    // emergency holds the emergency mode choices.
+    public var emergency = EmergencyRules()
 
     // init builds the default settings.
     public init() {}
@@ -230,6 +278,7 @@ extension Settings {
     private enum CodingKeys: String, CodingKey {
         case tickerOn, place, width, offset, speed, allDisplays, interest, follows, feeds, refreshMinutes, alerts
         case disabledSources, tickerColor, look, customLook, rotationSeconds, position, fill, menuRoom
+        case emergency
     }
 
     // init decodes the stored fields and defaults the missing ones.
@@ -261,6 +310,7 @@ extension Settings {
         position = (try? c.decodeIfPresent(Position.self, forKey: .position)) ?? position
         fill = try c.decodeIfPresent(Bool.self, forKey: .fill) ?? fill
         menuRoom = try c.decodeIfPresent(Double.self, forKey: .menuRoom) ?? menuRoom
+        emergency = (try? c.decodeIfPresent(EmergencyRules.self, forKey: .emergency)) ?? emergency
     }
 
     // encode stores every field, with interest keyed by topic name.
@@ -286,5 +336,6 @@ extension Settings {
         try c.encode(position, forKey: .position)
         try c.encode(fill, forKey: .fill)
         try c.encode(menuRoom, forKey: .menuRoom)
+        try c.encode(emergency, forKey: .emergency)
     }
 }

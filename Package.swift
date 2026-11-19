@@ -17,7 +17,8 @@ let package = Package(
         ),
         .testTarget(
             name: "CrierKitTests",
-            dependencies: ["CrierKit"]
+            dependencies: ["CrierKit"],
+            resources: [.copy("Fixtures")]
         ),
     ]
 )

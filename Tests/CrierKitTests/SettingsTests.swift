@@ -143,4 +143,20 @@ struct SettingsTests {
         #expect(!follow.matches("49ers vs Seahawks odds and picks"))
         #expect(Follow(name: "Giants", query: "").source == nil)
     }
+
+    // emergencyKeepsChoices keeps stored emergency choices, defaults the rest, and skips an unknown mode.
+    @Test func emergencyKeepsChoices() throws {
+        #expect(CrierKit.Settings().emergency.mode == .local)
+        let settings = try decode(#"{"emergency": {"mode": "loud", "zip": "10001", "sound": false}}"#)
+        #expect(settings.emergency.mode == .local)
+        #expect(settings.emergency.zip == "10001")
+        #expect(!settings.emergency.sound)
+        #expect(settings.emergency.flashing)
+        #expect(settings.emergency.national == NationalRules())
+        var changed = CrierKit.Settings()
+        changed.emergency.mode = .localAndNational
+        changed.emergency.flashing = false
+        let data = try JSONEncoder().encode(changed)
+        #expect(try JSONDecoder().decode(CrierKit.Settings.self, from: data) == changed)
+    }
 }
