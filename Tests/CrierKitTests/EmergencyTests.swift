@@ -177,10 +177,25 @@ struct EmergencyTests {
 
     // active keeps the urgent warnings, newest first.
     @Test func activeNewestFirst() throws {
+        let early = WeatherAlert(id: "t1", event: "Tornado Warning", sent: noon)
+        let late = WeatherAlert(id: "t2", event: "Tornado Warning", sent: noon.addingTimeInterval(600))
+        let watch = WeatherAlert(id: "w", event: "Tornado Watch", sent: noon.addingTimeInterval(1200))
+        #expect(Emergency.active([early, watch, late], now: noon.addingTimeInterval(1800)) == [late, early])
+    }
+
+    // activeDropsReplaced follows the recorded tornado chain: the update replaces the warning, and the cancel
+    // clears it at once rather than when the warning would have ended.
+    @Test func activeDropsReplaced() throws {
         let tornado = try find("Tornado Warning")
         let update = try find("Tornado Warning", "Update")
-        let watch = try find("Flood Watch", "Update")
-        #expect(Emergency.active([tornado, watch, update], now: tornado.sent) == [update, tornado])
+        let cancel = try find("Tornado Warning", "Cancel")
+        #expect(Emergency.active([tornado, update], now: update.sent) == [update])
+        #expect(Emergency.active([tornado, cancel], now: tornado.sent) == [tornado])
+        let until = try #require(tornado.until)
+        #expect(cancel.sent < until)
+        #expect(Emergency.active([tornado, update, cancel], now: cancel.sent).isEmpty)
+        let open = WeatherAlert(id: "o", event: "Tornado Warning", sent: noon)
+        #expect(Emergency.active([open, tornado, update, cancel], now: cancel.sent) == [open])
     }
 
     // tierCountsOutletsAndPhrases turns a wide story red, and sounds only for a top tier phrase.

@@ -26,10 +26,21 @@ public struct WeatherAlert: Sendable, Hashable, Identifiable {
     public let ends: Date?
     // references are the identifiers of the earlier alerts this one updates or cancels.
     public let references: [String]
-    // phones reports whether the Weather Service sent the alert to phones as an imminent threat.
+    // expiredReferences are the identifiers of earlier alerts in the same warning that expired before this one
+    // was sent. The Weather Service moves them out of references, so an alert can name its earlier messages only
+    // here.
+    public let expiredReferences: [String]
+    // phones reports whether the Weather Service sent the alert to phones as an imminent threat. The Weather
+    // Service sets it only on the first message of a warning, never on its updates.
     public let phones: Bool
-    // threat is the damage threat the Weather Service attached, such as CONSIDERABLE or CATASTROPHIC.
+    // threat is the tornado or flash flood damage threat the Weather Service attached, CONSIDERABLE or
+    // CATASTROPHIC. When an alert carries both, CATASTROPHIC wins.
     public let threat: String?
+    // stormThreat is the thunderstorm damage threat the Weather Service attached, CONSIDERABLE or DESTRUCTIVE.
+    public let stormThreat: String?
+    // vtec are the alert's coded event lines, such as "/O.CON.KFGZ.FF.W.0220.000000T0000Z-261118T0415Z/". An
+    // alert can carry several, and alerts outside the weather warning system carry none.
+    public let vtec: [String]
     // instruction tells people what to do, if the Weather Service said.
     public let instruction: String?
     // link is the alert's page on api.weather.gov.
@@ -39,8 +50,9 @@ public struct WeatherAlert: Sendable, Hashable, Identifiable {
     public init(
         id: String, event: String, headline: String? = nil, area: String = "", severity: String = "Unknown",
         urgency: String = "Unknown", status: String = "Actual", messageType: String = "Alert", sent: Date,
-        expires: Date? = nil, ends: Date? = nil, references: [String] = [], phones: Bool = false,
-        threat: String? = nil, instruction: String? = nil, link: URL? = nil
+        expires: Date? = nil, ends: Date? = nil, references: [String] = [], expiredReferences: [String] = [],
+        phones: Bool = false, threat: String? = nil, stormThreat: String? = nil, vtec: [String] = [],
+        instruction: String? = nil, link: URL? = nil
     ) {
         self.id = id
         self.event = event
@@ -54,8 +66,11 @@ public struct WeatherAlert: Sendable, Hashable, Identifiable {
         self.expires = expires
         self.ends = ends
         self.references = references
+        self.expiredReferences = expiredReferences
         self.phones = phones
         self.threat = threat
+        self.stormThreat = stormThreat
+        self.vtec = vtec
         self.instruction = instruction
         self.link = link
     }
@@ -68,6 +83,54 @@ public struct WeatherAlert: Sendable, Hashable, Identifiable {
     // title is what the ticker shows: the event and the area it covers.
     public var title: String {
         area.isEmpty ? event : "\(event) for \(area)"
+    }
+
+    // actions are the actions of the coded event lines, such as NEW, CON, EXT, CAN, or EXP, one per line.
+    public var actions: [String] {
+        vtec.compactMap { Self.fields($0)?[1] }
+    }
+
+    // ended reports whether every coded event line cancels or expires its event, so the alert only announces that
+    // a warning is over. An alert with no coded event lines never counts as ended.
+    public var ended: Bool {
+        let actions = actions
+        return !actions.isEmpty && actions.allSatisfy(Self.endings.contains)
+    }
+
+    // chain names the warning this alert belongs to as office.phenomenon.significance.eventNumber, such as
+    // "KFGZ.FF.W.0220". Every message about one warning shares it, whatever its type or references. It comes from
+    // the first coded event line still in force, or the first line when all have ended, and is nil when the alert
+    // has none.
+    public var chain: String? {
+        let lines = vtec.compactMap(Self.fields)
+        guard let line = lines.first(where: { !Self.endings.contains($0[1]) }) ?? lines.first else {
+            return nil
+        }
+        return line[2...5].joined(separator: ".")
+    }
+
+    // catastrophic reports whether the alert carries a catastrophic tornado or flash flood damage threat, as a
+    // tornado emergency or a flash flood emergency does.
+    public var catastrophic: Bool {
+        threat == "CATASTROPHIC"
+    }
+
+    // keys are every name this alert answers to when checking whether it already sounded: its own identifier,
+    // the identifiers it references, the expired ones it names, and its chain.
+    var keys: Set<String> {
+        Set([id] + references + expiredReferences + (chain.map { [$0] } ?? []))
+    }
+
+    // endings are the coded event actions that end an event: CAN for canceled, EXP for expired, and UPG for
+    // replaced by a stronger event, which arrives on its own coded line.
+    static let endings: Set<String> = ["CAN", "EXP", "UPG"]
+
+    // fields splits a coded event line into its parts: class, action, office, phenomenon, significance, event
+    // number, and times. It returns nil for a line too short to hold an event number.
+    static func fields(_ line: String) -> [String]? {
+        let fields = line.trimmingCharacters(in: CharacterSet(charactersIn: "/ ")).split(separator: ".")
+            .map(String.init)
+        return fields.count >= 6 ? fields : nil
     }
 }
 
@@ -143,13 +206,24 @@ public enum WeatherAlerts {
             guard let id, let event, let sent else {
                 return nil
             }
-            let threat = parameters?["tornadoDamageThreat"]?.first ?? parameters?["flashFloodDamageThreat"]?.first
+            let threats = ["tornadoDamageThreat", "flashFloodDamageThreat"].compactMap { parameters?[$0]?.first }
             return WeatherAlert(
                 id: id, event: event, headline: headline, area: areaDesc ?? "", severity: severity ?? "Unknown",
                 urgency: urgency ?? "Unknown", status: status ?? "Actual", messageType: messageType ?? "Alert",
                 sent: sent, expires: expires, ends: ends, references: references?.map(\.identifier) ?? [],
-                phones: parameters?["WEAHandling"]?.contains("Imminent Threat") ?? false, threat: threat,
+                expiredReferences: expired, phones: parameters?["WEAHandling"]?.contains("Imminent Threat") ?? false,
+                threat: threats.first { $0 == "CATASTROPHIC" } ?? threats.first,
+                stormThreat: parameters?["thunderstormDamageThreat"]?.first, vtec: parameters?["VTEC"] ?? [],
                 instruction: instruction, link: URL(string: id))
+        }
+
+        // expired reads the identifiers out of the expiredReferences parameter. Each value holds entries separated
+        // by spaces, and each entry is the sender, the identifier, and the send time, separated by commas.
+        var expired: [String] {
+            (parameters?["expiredReferences"] ?? []).flatMap { $0.split(separator: " ") }.compactMap { entry in
+                let parts = entry.split(separator: ",", omittingEmptySubsequences: false)
+                return parts.count >= 2 && !parts[1].isEmpty ? String(parts[1]) : nil
+            }
         }
     }
 }
@@ -189,77 +263,147 @@ public enum Emergency {
         "Hazardous Materials Warning",
     ]
 
+    // phoneLevel reports whether an alert is one a phone in the area alerts for. It went to phones as an imminent
+    // threat, is rated Extreme and Immediate, is one of the life-safety events, or carries a considerable or
+    // catastrophic tornado or flash flood damage threat or a destructive thunderstorm damage threat. The Weather
+    // Service flags only the first message of a warning for phones, and the damage threat keeps its updates at
+    // this level.
+    public static func phoneLevel(_ alert: WeatherAlert) -> Bool {
+        alert.phones || (alert.severity == "Extreme" && alert.urgency == "Immediate")
+            || lifeSafety.contains(alert.event) || ["CONSIDERABLE", "CATASTROPHIC"].contains(alert.threat)
+            || alert.stormThreat == "DESTRUCTIVE"
+    }
+
     // urgent reports whether an alert in force now sounds at the given sensitivity. It has to be a real alert, not
-    // a cancel, and not past its end. At the phone sensitivity it must have gone to phones as an imminent threat,
-    // be rated Extreme and Immediate, carry a catastrophic damage threat, or be one of the life-safety events.
+    // a cancel or an expiration, and not past its end. At the phone sensitivity it must be at the phone level.
     // The storm and flood sensitivity adds severe thunderstorm and flood warnings. The tornado and civil
     // sensitivity counts only the civil events. Watches, advisories, and statements never count.
     public static func urgent(_ alert: WeatherAlert, now: Date, sensitivity: Sensitivity = .phone) -> Bool {
         guard inForce(alert, now: now) else {
             return false
         }
-        let phone =
-            alert.phones || (alert.severity == "Extreme" && alert.urgency == "Immediate")
-            || alert.threat == "CATASTROPHIC" || lifeSafety.contains(alert.event)
         switch sensitivity {
         case .phone:
-            return phone
+            return phoneLevel(alert)
         case .stormAndFlood:
-            return phone || alert.event == "Severe Thunderstorm Warning" || alert.event.hasSuffix("Flood Warning")
+            return phoneLevel(alert) || alert.event == "Severe Thunderstorm Warning"
+                || alert.event.hasSuffix("Flood Warning")
         case .tornadoAndCivil:
             return civil.contains(alert.event)
         }
     }
 
-    // notable reports whether an alert is a watch or a warning in force now that does not sound at the given
-    // sensitivity, such as a Severe Thunderstorm Warning, a river Flood Warning, or a Flood Watch. Advisories and
-    // statements never count.
-    public static func notable(_ alert: WeatherAlert, now: Date, sensitivity: Sensitivity = .phone) -> Bool {
-        guard inForce(alert, now: now), !urgent(alert, now: now, sensitivity: sensitivity) else {
+    // sounds reports whether an alert in force now stays red: it is urgent at the given sensitivity, or it belongs
+    // to a warning whose chain is in heard, since that warning already sounded on this Mac.
+    static func sounds(_ alert: WeatherAlert, now: Date, sensitivity: Sensitivity, heard: Set<String>) -> Bool {
+        if urgent(alert, now: now, sensitivity: sensitivity) {
+            return true
+        }
+        guard let chain = alert.chain, heard.contains(chain) else {
             return false
         }
-        return alert.event.hasSuffix(" Warning") || alert.event.hasSuffix(" Watch")
+        return inForce(alert, now: now)
     }
 
-    // inForce reports whether an alert is real, not a cancel, and not past its end.
+    // notable reports whether an alert in force now shows as a quiet line because it does not sound at the given
+    // sensitivity and its chain is not in heard. It must be a watch, a warning, or an event ending in Emergency,
+    // such as a Severe Thunderstorm Warning, a Flood Watch, or a Local Area Emergency. Advisories and statements
+    // never count.
+    public static func notable(
+        _ alert: WeatherAlert, now: Date, sensitivity: Sensitivity = .phone, heard: Set<String> = []
+    ) -> Bool {
+        guard inForce(alert, now: now), !sounds(alert, now: now, sensitivity: sensitivity, heard: heard) else {
+            return false
+        }
+        return [" Warning", " Watch", " Emergency"].contains { alert.event.hasSuffix($0) }
+    }
+
+    // inForce reports whether an alert is real, not a cancel, not a statement that its event was canceled or
+    // expired, and not past its end. The Weather Service sends expiration statements typed Alert or Update, so
+    // the coded event action decides.
     static func inForce(_ alert: WeatherAlert, now: Date) -> Bool {
-        guard alert.status == "Actual", alert.messageType != "Cancel" else {
+        guard alert.status == "Actual", alert.messageType != "Cancel", !alert.ended else {
             return false
         }
         return alert.until.map { $0 > now } ?? true
     }
 
-    // active returns the alerts that sound at the given sensitivity, newest first.
-    public static func active(_ alerts: [WeatherAlert], now: Date, sensitivity: Sensitivity = .phone)
-        -> [WeatherAlert]
-    {
-        alerts.filter { urgent($0, now: now, sensitivity: sensitivity) }.sorted { $0.sent > $1.sent }
+    // active returns the alerts that sound at the given sensitivity, most dangerous first, leaving out any alert
+    // that another alert in the list updates or cancels, so a canceled warning clears at once and an updated one
+    // shows only its latest message. An alert in force whose chain is in heard stays active, so a warning that
+    // already sounded stays red on updates that lose the phone flag.
+    public static func active(
+        _ alerts: [WeatherAlert], now: Date, sensitivity: Sensitivity = .phone, heard: Set<String> = []
+    ) -> [WeatherAlert] {
+        let replaced = replaced(alerts, now: now)
+        return ranked(
+            alerts.filter {
+                !replaced.contains($0.id) && sounds($0, now: now, sensitivity: sensitivity, heard: heard)
+            })
     }
 
-    // notices returns the notable alerts, newest first, leaving out any alert that another alert in the list
-    // updates or cancels, so a canceled watch drops at once and an updated one shows only its latest message.
-    public static func notices(_ alerts: [WeatherAlert], now: Date, sensitivity: Sensitivity = .phone)
-        -> [WeatherAlert]
-    {
-        let replaced = Set(alerts.flatMap(\.references))
-        return alerts.filter { !replaced.contains($0.id) && notable($0, now: now, sensitivity: sensitivity) }
-            .sorted { $0.sent > $1.sent }
+    // notices returns the notable alerts, most dangerous first, leaving out any alert that another alert in the
+    // list updates or cancels, so a canceled watch drops at once and an updated one shows only its latest message.
+    // Pass the same heard as to active, so an alert never shows in both.
+    public static func notices(
+        _ alerts: [WeatherAlert], now: Date, sensitivity: Sensitivity = .phone, heard: Set<String> = []
+    ) -> [WeatherAlert] {
+        let replaced = replaced(alerts, now: now)
+        return ranked(
+            alerts.filter {
+                !replaced.contains($0.id) && notable($0, now: now, sensitivity: sensitivity, heard: heard)
+            })
     }
 
-    // ring returns the active alerts that have not sounded yet and the identifiers heard after them. An update
-    // to a warning that already sounded stays quiet, since it names the earlier alert in its references.
+    // replaced returns the identifiers of alerts that a later update or cancel, already sent by now, replaces.
+    static func replaced(_ alerts: [WeatherAlert], now: Date) -> Set<String> {
+        Set(alerts.filter { $0.sent <= now }.flatMap(\.references))
+    }
+
+    // danger ranks an alert for display, lower first. Life-safety events and tornado events rank 0, other alerts
+    // at the phone level rank 1, and the rest rank 2.
+    static func danger(_ alert: WeatherAlert) -> Int {
+        if lifeSafety.contains(alert.event) || alert.event.hasPrefix("Tornado ") {
+            return 0
+        }
+        return phoneLevel(alert) ? 1 : 2
+    }
+
+    // ranked sorts alerts by danger, then newest first, so a tornado warning never hides behind a newer flood
+    // update.
+    static func ranked(_ alerts: [WeatherAlert]) -> [WeatherAlert] {
+        alerts.sorted { a, b in
+            danger(a) != danger(b) ? danger(a) < danger(b) : a.sent > b.sent
+        }
+    }
+
+    // ring returns the active alerts that have not sounded yet, most dangerous first, and the names heard after
+    // them. An alert already sounded when its identifier, any identifier it references, any expired identifier it
+    // names, or its chain is in heard, so every later message about a warning stays quiet, whatever its type. A
+    // warning that sounded rings again once when an update raises its damage threat to catastrophic, since phones
+    // alert again for a tornado emergency or a flash flood emergency.
     public static func ring(_ active: [WeatherAlert], heard: Set<String>) -> (ring: [WeatherAlert], heard: Set<String>)
     {
         var heard = heard
-        var ring: [WeatherAlert] = []
+        var rung: Set<String> = []
         for alert in active.sorted(by: { $0.sent < $1.sent }) {
-            let chain = Set([alert.id] + alert.references)
-            if heard.isDisjoint(with: chain) {
-                ring.append(alert)
+            let keys = alert.keys
+            let marks = Set(keys.map(catastrophicMark))
+            if heard.isDisjoint(with: keys) || (alert.catastrophic && heard.isDisjoint(with: marks)) {
+                rung.insert(alert.id)
             }
-            heard.formUnion(chain)
+            heard.formUnion(keys)
+            if alert.catastrophic {
+                heard.formUnion(marks)
+            }
         }
-        return (ring.sorted { $0.sent > $1.sent }, heard)
+        return (ranked(active.filter { rung.contains($0.id) }), heard)
+    }
+
+    // catastrophicMark is the name ring puts in heard once a warning sounded at a catastrophic damage threat, so
+    // the rise rings only once. It holds a space, which no identifier or chain does.
+    static func catastrophicMark(_ key: String) -> String {
+        "CATASTROPHIC " + key
     }
 
     // tier returns how loudly a national headline interrupts. A story first has to reach red's outlet count
