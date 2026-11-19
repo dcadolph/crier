@@ -25,9 +25,19 @@ Crier is free. It is a work in progress.
   center, or right of center. It stays clear of the status icons. A filling ticker runs on both sides of
   the notch and of the clock from Fuginaut, with headlines passing behind them. A fixed width ticker steps
   around them.
-- Opens a window with the top stories in rotating columns over the full headline list.
+- Opens a window with a news band on top: the biggest stories as cards that take turns in rotating
+  columns, each naming its outlet, how many outlets carry it, and how old it is, with the ticker running
+  underneath. The full headline list sits below the band.
 
 Hover over the ticker to hold it still, both sides at once when it is split. Click a headline to open it.
+
+<p align="center">
+  <img src="art/news-band.png" alt="The news band: three major stories as cards above the ticker" width="100%">
+</p>
+
+<p align="center">
+  <img src="art/split-ticker.png" alt="The ticker in the menu bar, running on both sides of a clock" width="100%">
+</p>
 
 ## Install
 
@@ -76,7 +86,27 @@ change in Settings.
 
 The news engine and its SwiftUI views live in the `CrierKit` library, so another app can show the same
 ticker and news band. Add this package as a dependency and use `News`, `TickerView`, `NewsBand`, and
-`HeadlineList`.
+`HeadlineList`. The cards, their rotation, the progress line, and the ticker all come from CrierKit. A
+host app hands in its own colors, and the band takes them on.
+
+```swift
+import CrierKit
+import SwiftUI
+
+struct Headlines: View {
+    @State private var news = News()
+
+    var body: some View {
+        NewsBand(
+            entries: news.entries,
+            theme: BandTheme(background: .black, foreground: .white, accent: .orange, tile: .black, bell: BandTheme.gold),
+            rotation: .seconds(30)
+        )
+        .onAppear { news.start() }
+        .onDisappear { news.stop() }
+    }
+}
+```
 
 ## Development
 
