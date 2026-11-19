@@ -43,6 +43,12 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         item.menu = menu
     }
 
+    // alarm turns the bell red while an emergency is in force, and back to the bar's own color after.
+    func alarm(_ on: Bool) {
+        item.button?.contentTintColor = on ? .systemRed : nil
+        item.button?.toolTip = on ? "Crier: emergency in force" : "Crier"
+    }
+
     // bellFrame returns the bell's frame in screen coordinates, or nil when macOS keeps it out of the bar.
     var bellFrame: NSRect? {
         guard let window = item.button?.window, window.isVisible, item.isVisible else {

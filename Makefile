@@ -46,7 +46,8 @@ app: $(ICNS)
 	cp Sources/Crier/Info.plist $(APP)/Contents/Info.plist
 	cp $(ICNS) $(APP)/Contents/Resources/AppIcon.icns
 	cp art/glyph.png art/glyph@2x.png art/bell.png $(APP)/Contents/Resources/
-	codesign --force --options runtime $(TIMESTAMP) --sign "$(SIGN_ID)" $(APP)
+	codesign --force --options runtime --entitlements Sources/Crier/Crier.entitlements $(TIMESTAMP) \
+		--sign "$(SIGN_ID)" $(APP)
 
 zip: app
 	rm -f $(ZIP)

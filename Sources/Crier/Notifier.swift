@@ -31,14 +31,19 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
         }
         super.init()
         center.delegate = self
-        if store.settings.alerts.enabled {
+        if Self.wantsPermission(store.settings) {
             authorize()
         }
         store.onChange { [weak self] old in
-            if let self, self.store.settings.alerts.enabled, !old.alerts.enabled {
+            if let self, Self.wantsPermission(self.store.settings), !Self.wantsPermission(old) {
                 self.authorize()
             }
         }
+    }
+
+    // wantsPermission reports whether the settings post anything: major story alerts or emergencies.
+    private static func wantsPermission(_ settings: CrierKit.Settings) -> Bool {
+        settings.alerts.enabled || settings.emergency.mode != .off
     }
 
     // authorize asks for permission to post alerts.
@@ -78,6 +83,24 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
         center.add(request) { error in
             if let error {
                 NSLog("crier: notification failed: %@", error.localizedDescription)
+            }
+        }
+    }
+
+    // postEmergency sends an emergency notification marked time sensitive, so it can show through a Focus that
+    // allows time sensitive notifications. It has no sound of its own, since the siren plays Crier's sound.
+    func postEmergency(id: String, title: String, body: String, link: URL?) {
+        let content = UNMutableNotificationContent()
+        content.title = title
+        content.body = body
+        content.interruptionLevel = .timeSensitive
+        if let link {
+            content.userInfo = [Self.linkKey: link.absoluteString]
+        }
+        let request = UNNotificationRequest(identifier: "emergency:\(id)", content: content, trigger: nil)
+        center.add(request) { error in
+            if let error {
+                NSLog("crier: emergency notification failed: %@", error.localizedDescription)
             }
         }
     }

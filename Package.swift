@@ -13,7 +13,7 @@ let package = Package(
         .executableTarget(
             name: "Crier",
             dependencies: ["CrierKit"],
-            exclude: ["Info.plist"]
+            exclude: ["Info.plist", "Crier.entitlements"]
         ),
         .testTarget(
             name: "CrierKitTests",

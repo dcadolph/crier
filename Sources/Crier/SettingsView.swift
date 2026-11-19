@@ -11,6 +11,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
     case follows
     case feeds
     case alerts
+    case emergency
     case general
 
     // id identifies the tab in lists.
@@ -25,6 +26,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
         case .follows: "Follows"
         case .feeds: "Feeds"
         case .alerts: "Alerts"
+        case .emergency: "Emergency"
         case .general: "General"
         }
     }
@@ -38,6 +40,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
         case .follows: "star"
         case .feeds: "dot.radiowaves.up.forward"
         case .alerts: "bell.badge"
+        case .emergency: "exclamationmark.triangle"
         case .general: "gearshape"
         }
     }
@@ -52,6 +55,12 @@ struct SettingsView: View {
     var news: News
     // loginItem starts Crier at login.
     var loginItem: LoginItem
+    // siren holds the emergency in force and runs the test.
+    var siren: Siren
+    // feed polls the Weather Service.
+    var feed: EmergencyFeed
+    // locator finds the reader's area.
+    var locator: Locator
     // tab is the page on show.
     @State private var tab: SettingsTab = .ticker
     // trusted reports whether Crier may read the app menus, checked while the ticker page is open.
@@ -83,6 +92,7 @@ struct SettingsView: View {
         case .follows: followsPage
         case .feeds: feedsPage
         case .alerts: alertsPage
+        case .emergency: emergencyPage
         case .general: generalPage
         }
     }
@@ -346,6 +356,59 @@ struct SettingsView: View {
                 .foregroundStyle(.secondary)
         }
         .formStyle(.grouped)
+    }
+
+    // emergencyPage sets which emergencies interrupt, the reader's area, and how loudly.
+    private var emergencyPage: some View {
+        Form {
+            Picker("Emergency mode", selection: $store.settings.emergency.mode) {
+                ForEach(EmergencyMode.allCases, id: \.self) { mode in
+                    Text(mode.title).tag(mode)
+                }
+            }
+            .help("Local warnings come from the National Weather Service for your area.")
+            if store.settings.emergency.mode != .off {
+                TextField("ZIP code", text: $store.settings.emergency.zip, prompt: Text("This Mac's location"))
+                    .help("Leave it empty to use this Mac's location. Your area stays on this Mac.")
+                LabeledContent("Area", value: areaText)
+                Toggle("Play the emergency sound", isOn: $store.settings.emergency.sound)
+                    .help("Crier plays its own sound for the top tier, even when notification sounds are off.")
+                Toggle("Flash the ticker", isOn: $store.settings.emergency.flashing)
+                    .help("Three slow flashes, then steady red. Never when Reduce Motion is on.")
+                LabeledContent("Last checked", value: checkedText)
+                if let failure = feed.failure {
+                    FailureNote(reason: failure)
+                }
+                LabeledContent("In force", value: siren.pinned ?? "Nothing")
+                HStack {
+                    Spacer()
+                    Button("Test Emergency Mode") {
+                        siren.test()
+                    }
+                    .disabled(siren.testing)
+                    .help("Show the red ticker, flash it, and play the sound, without a real warning.")
+                }
+            }
+            Text(
+                "Life-safety warnings for your area, such as a tornado warning, turn the ticker red, flash it, and "
+                    + "play a sound, even in quiet hours. Watches, advisories, and ordinary warnings never do. "
+                    + "National breaking news far bigger than major turns the ticker red without a sound, and only "
+                    + "wars, declared national emergencies, martial law, and nuclear attacks sound."
+            )
+            .font(.callout)
+            .foregroundStyle(.secondary)
+        }
+        .formStyle(.grouped)
+    }
+
+    // areaText names the area warnings are checked for, or why there is none.
+    private var areaText: String {
+        locator.problem ?? locator.place ?? "Finding your area…"
+    }
+
+    // checkedText says when the Weather Service was last checked.
+    private var checkedText: String {
+        feed.checked?.formatted(date: .omitted, time: .shortened) ?? "Not yet"
     }
 
     // generalPage holds login, the refresh interval, and feed health.

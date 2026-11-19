@@ -14,6 +14,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var news: News?
     // notifier posts major story alerts.
     private var notifier: Notifier?
+    // feed polls the Weather Service for warnings at the reader's spot.
+    private let feed = EmergencyFeed()
+    // locator finds the reader's spot.
+    private let locator = Locator()
+    // siren interrupts for emergencies.
+    private var siren: Siren?
+    // relocating is a ZIP code lookup waiting for the reader to stop typing.
+    private var relocating: Task<Void, Never>?
     // ticker draws the ticker on every display that shows it.
     private var ticker: TickerPanels?
     // room measures what else takes space in the menu bar.
@@ -35,8 +43,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         loginItem.configureOnFirstLaunch()
         let news = News(settings: store.settings)
         let notifier = Notifier(store: store)
-        news.onRefresh = { [weak notifier] headlines, first in
+        let siren = Siren(store: store, notifier: notifier)
+        self.siren = siren
+        news.onRefresh = { [weak self, weak notifier] headlines, first in
             notifier?.handle(headlines, first: first)
+            if self?.store.settings.emergency.mode == .localAndNational {
+                self?.siren?.read(headlines, first: first)
+            }
         }
         store.onChange { [weak self] old in
             self?.settingsChanged(from: old)
@@ -51,7 +64,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         self.statusItem = statusItem
         let room = BarRoom(store: store) { [weak statusItem] in statusItem?.bellFrame }
         self.room = room
-        ticker = TickerPanels(store: store, news: news, room: room)
+        ticker = TickerPanels(store: store, news: news, siren: siren, room: room)
+        startEmergencies(siren: siren, statusItem: statusItem)
         statusItem.watchBarAppearance { [weak self] appearance in
             self?.ticker?.barAppearance = appearance
         }
@@ -72,6 +86,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         let new = store.settings
         news.settings = new
+        emergencySettingsChanged(from: old.emergency, to: new.emergency)
         guard old.sources != new.sources || old.follows != new.follows || old.alerts != new.alerts else {
             return
         }
@@ -85,13 +100,86 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    // startEmergencies wires the spot to the Weather Service feed, the feed to the siren, and the siren to the
+    // bell, then starts polling when emergency mode is on.
+    private func startEmergencies(siren: Siren, statusItem: StatusItemController) {
+        locator.onSpot = { [weak self] spot in
+            guard let self else {
+                return
+            }
+            self.feed.spot = spot
+            self.siren?.spot = spot
+            Task { await self.feed.check() }
+        }
+        feed.onRing = { [weak self, weak siren] new in
+            guard let self else {
+                return
+            }
+            siren?.warn(self.feed.alerts, new: new)
+        }
+        watchAlarm(siren: siren, statusItem: statusItem)
+        if store.settings.emergency.mode != .off {
+            locator.locate(zip: store.settings.emergency.zip)
+            feed.start()
+        }
+    }
+
+    // watchAlarm keeps the bell red while the siren has an emergency in force and hands the feed's warnings to the
+    // siren when they end.
+    private func watchAlarm(siren: Siren, statusItem: StatusItemController) {
+        withObservationTracking {
+            statusItem.alarm(siren.tier > .none)
+            if feed.alerts != siren.warnings {
+                siren.warn(feed.alerts, new: [])
+            }
+        } onChange: { [weak self, weak siren, weak statusItem] in
+            Task { @MainActor in
+                guard let self, let siren, let statusItem else {
+                    return
+                }
+                self.watchAlarm(siren: siren, statusItem: statusItem)
+            }
+        }
+    }
+
+    // emergencySettingsChanged starts or stops polling when emergency mode turns on or off, and looks up the area
+    // again shortly after the ZIP code stops changing.
+    private func emergencySettingsChanged(from old: EmergencyRules, to new: EmergencyRules) {
+        if new.mode == .off, old.mode != .off {
+            feed.stop()
+            siren?.clear()
+            return
+        }
+        if new.mode != .off, old.mode == .off {
+            locator.locate(zip: new.zip)
+            feed.start()
+            return
+        }
+        if new.mode == .local, old.mode == .localAndNational {
+            siren?.read([], first: true)
+        }
+        guard new.mode != .off, new.zip != old.zip else {
+            return
+        }
+        relocating?.cancel()
+        relocating = Task { [weak self] in
+            try? await Task.sleep(for: Self.settle)
+            guard !Task.isCancelled else {
+                return
+            }
+            self?.locator.locate(zip: new.zip)
+        }
+    }
+
     // showSettings opens the settings window and brings it to the front.
     private func showSettings() {
-        guard let news else {
+        guard let news, let siren else {
             return
         }
         if settingsWindow == nil {
-            let host = NSHostingController(rootView: SettingsView(store: store, news: news, loginItem: loginItem))
+            let host = NSHostingController(
+                rootView: SettingsView(
+                    store: store, news: news, loginItem: loginItem, siren: siren, feed: feed, locator: locator))
             let window = NSWindow(contentViewController: host)
             window.title = "Crier Settings"
             window.styleMask = [.titled, .closable]
