@@ -156,6 +156,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }
         if new.mode == .off, old.mode != .off {
+            locator.stop()
             feed.stop()
             siren?.clear()
             return

@@ -216,6 +216,17 @@ struct EmergencyTests {
         #expect(Emergency.outletsWithin(event, window: 7200) == 8)
     }
 
+    // spotMeters measures the distance between spots: zero to itself, about 111 kilometers for a degree of latitude,
+    // and about 1.1 kilometers for a hundredth of a degree.
+    @Test func spotMeters() {
+        let austin = Spot(latitude: 30.267, longitude: -97.743)
+        #expect(austin.meters(to: austin) == 0)
+        let north = Spot(latitude: 31.267, longitude: -97.743)
+        #expect(abs(austin.meters(to: north) - 111_195) < 50)
+        let step = Spot(latitude: 30.277, longitude: -97.743)
+        #expect(abs(step.meters(to: austin) - 1112) < 5)
+    }
+
     // spotRounds keeps three decimals and writes the Weather Service point.
     @Test func spotRounds() {
         let spot = Spot(latitude: 38.901234, longitude: -77.045678)
@@ -308,6 +319,23 @@ struct EmergencyFeedTests {
         await feed.check(now: now.addingTimeInterval(60))
         #expect(feed.alerts.map(\.event) == ["Flash Flood Warning"])
         #expect(!feed.notices.map(\.event).contains("Flash Flood Warning"))
+    }
+
+    // moveKeepsHeard never rings again for a warning heard before the spot moved.
+    @Test func moveKeepsHeard() async throws {
+        let reads = Reads()
+        reads.data = try recorded("weather-alerts")
+        let feed = feed(reads)
+        var rung = 0
+        feed.onRing = { _ in rung += 1 }
+        let tornado = try firstWarning(reads)
+        await feed.check(now: tornado.sent)
+        #expect(rung == 1)
+        feed.spot = Spot(latitude: 37.01, longitude: -122)
+        #expect(feed.alerts.isEmpty)
+        await feed.check(now: tornado.sent)
+        #expect(feed.alerts.contains(tornado))
+        #expect(rung == 1)
     }
 
     // failedCheckKeepsWarnings keeps the known warnings through a failed read until they end.

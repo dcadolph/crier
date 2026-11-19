@@ -1,10 +1,12 @@
+import AppKit
 import CoreLocation
 import Observation
 
 import CrierKit
 
 // Locator finds the reader's spot for emergency warnings: from the ZIP code in settings, or from the Mac's location
-// when no ZIP code is set. The spot stays on the Mac except for the rounded point sent to the Weather Service.
+// when no ZIP code is set. It reads the Mac's location again on an interval and after the Mac wakes, so the spot
+// follows a laptop that moves. The spot stays on the Mac except for the rounded point sent to the Weather Service.
 @MainActor
 @Observable
 final class Locator: NSObject, CLLocationManagerDelegate {
@@ -23,20 +25,39 @@ final class Locator: NSObject, CLLocationManagerDelegate {
     @ObservationIgnored private let geocoder = CLGeocoder()
     // zip is the ZIP code last asked for, empty for the Mac's location.
     @ObservationIgnored private var zip = ""
+    // refreshing reads the Mac's location again on the interval while no ZIP code is set.
+    @ObservationIgnored private var refreshing: Task<Void, Never>?
+
+    // every is how often the Mac's location is read again while no ZIP code is set.
+    static let every = Duration.seconds(30 * 60)
+    // moved is how far, in meters, the Mac must move before its new location replaces the spot. Smaller changes
+    // are the location's own wobble, and replacing the spot for them would clear the warnings until the next check.
+    static let moved = 1000.0
 
     // init builds a locator that reports to the delegate methods below.
     override init() {
         super.init()
         manager.delegate = self
         manager.desiredAccuracy = kCLLocationAccuracyKilometer
+        NSWorkspace.shared.notificationCenter.addObserver(
+            self, selector: #selector(woke), name: NSWorkspace.didWakeNotification, object: nil)
     }
 
     // locate finds the spot for a ZIP code, or for the Mac's location when the ZIP code is empty.
     func locate(zip raw: String) {
         zip = raw.trimmingCharacters(in: .whitespaces)
-        geocoder.cancelGeocode()
+        stop()
         if zip.isEmpty {
             locateMac()
+            refreshing = Task { [weak self] in
+                while !Task.isCancelled {
+                    try? await Task.sleep(for: Self.every)
+                    guard !Task.isCancelled else {
+                        return
+                    }
+                    self?.locateMac()
+                }
+            }
             return
         }
         guard zip.count == 5, zip.allSatisfy(\.isNumber) else {
@@ -63,6 +84,20 @@ final class Locator: NSObject, CLLocationManagerDelegate {
                         problem: failed ? "Crier could not look up that ZIP code." : "No place has that ZIP code.")
                 }
             }
+        }
+    }
+
+    // stop ends the interval reads and any ZIP code lookup, as when emergency mode turns off.
+    func stop() {
+        refreshing?.cancel()
+        refreshing = nil
+        geocoder.cancelGeocode()
+    }
+
+    // woke reads the Mac's location again after sleep, since a laptop often wakes somewhere new.
+    @objc private func woke() {
+        if refreshing != nil {
+            locateMac()
         }
     }
 
@@ -99,16 +134,19 @@ final class Locator: NSObject, CLLocationManagerDelegate {
         }
     }
 
-    // locationManager keeps the Mac's location as the spot.
+    // locationManager keeps the Mac's location as the spot, unless it is within the wobble of the spot already
+    // known.
     nonisolated func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
         guard let last = locations.last else {
             return
         }
         let found = Spot(latitude: last.coordinate.latitude, longitude: last.coordinate.longitude)
         Task { @MainActor in
-            if self.zip.isEmpty {
-                self.report(found, place: "This Mac's location", problem: nil)
+            guard self.zip.isEmpty else {
+                return
             }
+            let near = self.spot.map { $0.meters(to: found) < Self.moved } ?? false
+            self.report(near ? self.spot : found, place: "This Mac's location", problem: nil)
         }
     }
 

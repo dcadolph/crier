@@ -18,6 +18,17 @@ public struct Spot: Codable, Sendable, Hashable {
     public var point: String {
         "\(latitude),\(longitude)"
     }
+
+    // meters returns the distance to another spot along the Earth's surface.
+    public func meters(to other: Spot) -> Double {
+        let radius = 6_371_000.0
+        let lat1 = latitude * .pi / 180
+        let lat2 = other.latitude * .pi / 180
+        let dLat = lat2 - lat1
+        let dLon = (other.longitude - longitude) * .pi / 180
+        let a = sin(dLat / 2) * sin(dLat / 2) + cos(lat1) * cos(lat2) * sin(dLon / 2) * sin(dLon / 2)
+        return 2 * radius * atan2(sqrt(a), sqrt(1 - a))
+    }
 }
 
 // EmergencyFeed polls the Weather Service for life-safety warnings at the reader's place and keeps the ones in
@@ -33,13 +44,14 @@ public final class EmergencyFeed {
     public private(set) var failure: String?
     // checked is when the last check finished.
     public private(set) var checked: Date?
-    // spot is the reader's place. Nil means no place is known yet, so nothing is checked.
+    // spot is the reader's place. Nil means no place is known yet, so nothing is checked. A new place clears the
+    // warnings until the next check, but keeps the record of what already rang, so a warning heard before a move
+    // never rings again.
     public var spot: Spot? {
         didSet {
             if spot != oldValue {
                 alerts = []
                 notices = []
-                heard = []
             }
         }
     }
