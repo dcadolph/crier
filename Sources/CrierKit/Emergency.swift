@@ -436,7 +436,8 @@ public enum Emergency {
     }
 
     // outletsWithin counts the distinct outlets that carried a headline within the window after its first
-    // story. Stories without a publish date do not count, since their timing is unknown.
+    // story, folding names as Coverage.outletKey does. Stories without a publish date do not count, since their
+    // timing is unknown.
     public static func outletsWithin(_ headline: Headline, window: TimeInterval) -> Int {
         guard let first = headline.first else {
             return 0
@@ -444,7 +445,7 @@ public enum Emergency {
         let early = headline.stories.filter { story in
             story.published.map { $0.timeIntervalSince(first) <= window } ?? false
         }
-        return Set(early.map(\.outlet)).count
+        return Set(early.map { Coverage.outletKey($0.outlet) }).count
     }
 
     // topPhrase returns the first top tier phrase found in any of a headline's titles, or nil.
