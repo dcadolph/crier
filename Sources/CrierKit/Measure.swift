@@ -28,6 +28,9 @@ public enum Measure {
         public var keywords: [String]
         // feeds is how many feeds the settings read at the time.
         public var feeds: Int
+        // stories are the ids of every story in the headline, used to join a story whose lead and wording change.
+        // Records written before it existed lack it.
+        public var stories: [String]? = nil
     }
 
     // Peak is one story across every refresh that saw it.
@@ -44,10 +47,10 @@ public enum Measure {
         public var outlets: Int
         // phrase is a top tier phrase any refresh found, if any.
         public var phrase: String?
-        // ids are every lead id the story had.
+        // ids are every lead and story id the story had.
         var ids: Set<String>
-        // keywords are the keywords from the latest refresh, used to join the next record.
-        var keywords: Set<String>
+        // keywords are every keyword set the story's lead titles had.
+        var keywords: Set<Set<String>>
     }
 
     // limit is how many headlines each refresh records.
@@ -56,6 +59,9 @@ public enum Measure {
     public static let thresholds = [8, 10, 12, 15, 20]
     // shown is how many stories the summary lists.
     public static let shown = 25
+    // joinWindow is how far apart two first reports can be for matching keywords to join them, so a later event
+    // worded like an earlier one starts its own story.
+    public static let joinWindow: TimeInterval = 12 * 3600
 
     // records returns the headlines with the most outlets within an hour, up to the limit, as records. Ties
     // keep the order the headlines came in.
@@ -72,7 +78,8 @@ public enum Measure {
                 at: at, id: headline.id, title: headline.lead.title, outlet: headline.lead.outlet,
                 first: headline.first, hour: hour, outlets: headline.outlets.count,
                 phrase: Emergency.topPhrase(headline, rules: rules)?.trimmingCharacters(in: .whitespaces),
-                tier: "\(Emergency.tier(headline, rules: rules))", keywords: headline.keywords.sorted(), feeds: feeds)
+                tier: "\(Emergency.tier(headline, rules: rules))", keywords: headline.keywords.sorted(), feeds: feeds,
+                stories: headline.stories.map(\.id))
         }
     }
 
@@ -108,38 +115,57 @@ public enum Measure {
         return String(format: "%04d-%02d-%02d.jsonl", parts.year ?? 0, parts.month ?? 0, parts.day ?? 0)
     }
 
-    // peaks joins records into stories, highest hour count first. A record joins a story that had the same lead
-    // id or whose keywords describe the same event, as Coverage.same decides.
+    // peaks joins records into stories, highest hour count first. A record joins every story that shares a lead
+    // or story id with it, or that had keywords describing the same event, as Coverage.same decides, with a first
+    // report within the join window. When one record joins several stories, they merge into one.
     public static func peaks(_ records: [Record]) -> [Peak] {
         var peaks: [Peak] = []
         for record in records.sorted(by: { $0.at < $1.at }) {
-            let keywords = Set(record.keywords)
-            let match = peaks.firstIndex { peak in
-                peak.ids.contains(record.id) || Coverage.same(peak.keywords, keywords)
+            var peak = Peak(
+                title: record.title, outlet: record.outlet, first: record.first, hour: record.hour,
+                outlets: record.outlets, phrase: record.phrase, ids: Set([record.id] + (record.stories ?? [])),
+                keywords: [Set(record.keywords)])
+            let matches = peaks.indices.filter { joins(peaks[$0], peak) }
+            for index in matches {
+                peak = merged(peaks[index], peak)
             }
-            guard let index = match else {
-                peaks.append(
-                    Peak(
-                        title: record.title, outlet: record.outlet, first: record.first, hour: record.hour,
-                        outlets: record.outlets, phrase: record.phrase, ids: [record.id], keywords: keywords))
+            guard let first = matches.first else {
+                peaks.append(peak)
                 continue
             }
-            var peak = peaks[index]
-            if record.hour > peak.hour {
-                peak.hour = record.hour
-                peak.title = record.title
-                peak.outlet = record.outlet
+            peaks[first] = peak
+            for index in matches.dropFirst().reversed() {
+                peaks.remove(at: index)
             }
-            peak.outlets = max(peak.outlets, record.outlets)
-            peak.first = [peak.first, record.first].compactMap { $0 }.min()
-            peak.phrase = peak.phrase ?? record.phrase
-            peak.ids.insert(record.id)
-            peak.keywords = keywords
-            peaks[index] = peak
         }
         return peaks.enumerated().sorted { a, b in
             a.element.hour != b.element.hour ? a.element.hour > b.element.hour : a.offset < b.offset
         }.map(\.element)
+    }
+
+    // joins reports whether two stories are one: they share an id, or their keywords match and their first reports
+    // fall within the join window. A story without a first report matches by keywords alone.
+    static func joins(_ a: Peak, _ b: Peak) -> Bool {
+        if !a.ids.isDisjoint(with: b.ids) {
+            return true
+        }
+        if let x = a.first, let y = b.first, abs(x.timeIntervalSince(y)) > joinWindow {
+            return false
+        }
+        return a.keywords.contains { words in b.keywords.contains { Coverage.same(words, $0) } }
+    }
+
+    // merged combines two stories, keeping the title and outlet from the higher hour count and, on a tie, from
+    // the later story b.
+    static func merged(_ a: Peak, _ b: Peak) -> Peak {
+        var peak = b.hour >= a.hour ? b : a
+        peak.hour = max(a.hour, b.hour)
+        peak.outlets = max(a.outlets, b.outlets)
+        peak.first = [a.first, b.first].compactMap { $0 }.min()
+        peak.phrase = a.phrase ?? b.phrase
+        peak.ids = a.ids.union(b.ids)
+        peak.keywords = a.keywords.union(b.keywords)
+        return peak
     }
 
     // summary writes the plain text report: the period, how many stories reach each threshold, and the biggest
