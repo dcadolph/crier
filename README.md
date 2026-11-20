@@ -118,6 +118,11 @@ ticker and news band. Add this package as a dependency and use `News`, `TickerVi
 `HeadlineList`. The cards, their rotation, the progress line, and the ticker all come from CrierKit. A
 host app hands in its own colors, and the band takes them on.
 
+![CrierKit's news band inside two made-up apps, a dark deploy dashboard and a light notes app, each in its own colors](docs/crierkit.png)
+
+The picture shows the real band inside two made-up apps, with invented outlets and headlines. To redraw it after
+the band changes, run `swift run --package-path docs/showcase Showcase docs/crierkit.png`.
+
 ```swift
 import CrierKit
 import SwiftUI
