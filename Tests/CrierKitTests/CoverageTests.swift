@@ -102,4 +102,29 @@ struct CoverageTests {
         #expect(headlines[1].lead.title == "Ranked story about markets rally today")
         #expect(headlines[2].lead.title == "Fresh story about bridge opening downtown")
     }
+
+    // outletKeyFoldsNames folds the names one newsroom's feeds give it into one key and keeps others apart.
+    @Test func outletKeyFoldsNames() {
+        let pairs = [
+            ("The Guardian", "Guardian"), ("BBC News", "BBC"), ("PBS News", "PBS"), ("Space.com", "Space"),
+            ("ABC News - Breaking News, Latest News and Videos", "ABC News"), (" AP News ", "ap"),
+        ]
+        for (name, other) in pairs {
+            #expect(Coverage.outletKey(name) == Coverage.outletKey(other), "\(name) and \(other)")
+        }
+        #expect(Coverage.outletKey("NBC News") != Coverage.outletKey("CBS News"))
+        #expect(Coverage.outletKey("Newser") == "newser")
+    }
+
+    // groupCountsOneNewsroomOnce lists a newsroom once when its own feed and an aggregator name it differently.
+    @Test func groupCountsOneNewsroomOnce() {
+        let stories = [
+            story("Storm floods coastal towns overnight", outlet: "BBC", hoursAgo: 2),
+            story("Storm floods coastal towns as rivers rise", outlet: "BBC News", hoursAgo: 2.5),
+            story("Storm floods coastal towns, thousands flee", outlet: "PBS News", hoursAgo: 3),
+        ]
+        let headlines = Coverage.group(stories)
+        #expect(headlines.count == 1)
+        #expect(headlines[0].outlets.count == 2)
+    }
 }

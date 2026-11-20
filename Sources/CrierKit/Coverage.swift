@@ -108,13 +108,24 @@ public enum Coverage {
         return false
     }
 
-    // outletKey folds an outlet name so "The Guardian" and "Guardian" count once.
+    // outletKey folds an outlet name so one newsroom counts once under the names its feeds give it: "The Guardian"
+    // and "Guardian", "BBC News" and "BBC", "Space.com" and "Space", and "ABC News - Breaking News, Latest News and
+    // Videos" and "ABC News".
     static func outletKey(_ outlet: String) -> String {
         var key = outlet.lowercased().trimmingCharacters(in: .whitespaces)
+        if let tagline = key.range(of: " - ") {
+            key = String(key[..<tagline.lowerBound])
+        }
         if key.hasPrefix("the ") {
             key.removeFirst(4)
         }
-        return key
+        if key.hasSuffix(".com") {
+            key.removeLast(4)
+        }
+        if key.hasSuffix(" news") {
+            key.removeLast(5)
+        }
+        return key.trimmingCharacters(in: .whitespaces)
     }
 
     // group gathers stories into headlines and returns them most important first: more outlets first, then

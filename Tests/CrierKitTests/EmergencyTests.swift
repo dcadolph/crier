@@ -231,6 +231,14 @@ struct EmergencyTests {
         #expect(Emergency.outletsWithin(event, window: 7200) == 8)
     }
 
+    // outletsWithinFoldsNames counts a newsroom once under the names its feeds give it.
+    @Test func outletsWithinFoldsNames() {
+        let names = ["BBC", "BBC News", "ABC News", "ABC News - Breaking News, Latest News and Videos", "Space.com"]
+        let all = names.map { story("Bridge collapses in the city", outlet: $0, hoursAgo: 1) }
+        let event = Headline(lead: all[0], stories: all, outlets: names.sorted(), keywords: [])
+        #expect(Emergency.outletsWithin(event, window: 3600) == 3)
+    }
+
     // spotMeters measures the distance between spots: zero to itself, about 111 kilometers for a degree of latitude,
     // and about 1.1 kilometers for a hundredth of a degree.
     @Test func spotMeters() {
