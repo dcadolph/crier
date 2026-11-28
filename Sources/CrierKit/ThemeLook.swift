@@ -7,10 +7,15 @@ public struct ThemeLook: Equatable, Sendable {
     public static let notificationName = "com.dcadolph.crier.themeColor"
     // auto is the ticker word that keeps the menu bar's own text color.
     public static let auto = "auto"
+    // none is the backing word that draws the ticker with no backing.
+    public static let none = "none"
 
     // ticker draws the ticker's headlines, or nil to match the menu bar's own text, for a theme color that would
     // wash out on the wallpaper under the menu bar.
     public var ticker: StoredColor?
+    // tickerBacking fills a pill behind each ticker panel when the ticker's color alone washes out on the
+    // wallpaper under the menu bar, or nil for no pill.
+    public var tickerBacking: StoredColor?
     // background fills the news band.
     public var background: StoredColor
     // text draws the band's headlines and rules.
@@ -19,8 +24,12 @@ public struct ThemeLook: Equatable, Sendable {
     public var accent: StoredColor
 
     // init builds a theme look.
-    public init(ticker: StoredColor?, background: StoredColor, text: StoredColor, accent: StoredColor) {
+    public init(
+        ticker: StoredColor?, tickerBacking: StoredColor? = nil, background: StoredColor, text: StoredColor,
+        accent: StoredColor
+    ) {
         self.ticker = ticker
+        self.tickerBacking = tickerBacking
         self.background = background
         self.text = text
         self.accent = accent
@@ -28,7 +37,8 @@ public struct ThemeLook: Equatable, Sendable {
 
     // message formats the look the way a theme switcher sends it, so it can be kept and read back later.
     public var message: String {
-        [ticker.map(\.hex) ?? Self.auto, background.hex, text.hex, accent.hex].joined(separator: " ")
+        [ticker.map(\.hex) ?? Self.auto, tickerBacking.map(\.hex) ?? Self.none, background.hex, text.hex, accent.hex]
+            .joined(separator: " ")
     }
 
     // applied returns the settings to draw: the reader's settings with the theme's ticker color and its band
@@ -60,25 +70,28 @@ public enum ThemeLookMessage: Equatable, Sendable {
     // junk is a message that cannot be read, which changes nothing.
     case junk
 
-    // init reads a message: empty clears, and four words set the look: the ticker color or "auto", then the
-    // band's background, text, and accent, each #RRGGBB. Anything else is junk.
+    // init reads a message: empty clears, and five words set the look: the ticker color or "auto", the ticker's
+    // backing or "none", then the band's background, text, and accent, each #RRGGBB. Anything else is junk.
     public init(_ message: String) {
         let parts = message.split(whereSeparator: \.isWhitespace).map(String.init)
         if parts.isEmpty {
             self = .clear
             return
         }
-        guard parts.count == 4 else {
+        guard parts.count == 5 else {
             self = .junk
             return
         }
-        let band = parts.dropFirst().compactMap(StoredColor.init(hex:))
+        let band = parts.dropFirst(2).compactMap(StoredColor.init(hex:))
         let ticker = parts[0] == ThemeLook.auto ? nil : StoredColor(hex: parts[0])
-        guard band.count == 3, parts[0] == ThemeLook.auto || ticker != nil else {
+        let backing = parts[1] == ThemeLook.none ? nil : StoredColor(hex: parts[1])
+        guard band.count == 3, parts[0] == ThemeLook.auto || ticker != nil, parts[1] == ThemeLook.none || backing != nil
+        else {
             self = .junk
             return
         }
-        self = .set(ThemeLook(ticker: ticker, background: band[0], text: band[1], accent: band[2]))
+        self = .set(
+            ThemeLook(ticker: ticker, tickerBacking: backing, background: band[0], text: band[1], accent: band[2]))
     }
 
     // updating returns the look to hold after this message arrives while current is held.

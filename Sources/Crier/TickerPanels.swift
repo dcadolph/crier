@@ -126,10 +126,10 @@ final class TickerPanel: NSPanel {
     }
 }
 
-// TickerRoot is a ticker panel's content: the ticker, on a bar backing when it sits in the strip. The display's
-// leftmost panel pins the emergency line over the left end of the row, so the shared scroll keeps its place. For a
-// watch or an ordinary warning the line sits on an orange tab and the ticker keeps its look. From the red tier up
-// the panel turns red with white type.
+// TickerRoot is a ticker panel's content: the ticker, on the theme's backing pill when the theme sends one, else on a
+// bar backing when it sits in the strip. The display's leftmost panel pins the emergency line over the left end of
+// the row, so the shared scroll keeps its place. For a watch or an ordinary warning the line sits on an orange tab
+// and the ticker keeps its look. From the red tier up the panel turns red with white type.
 struct TickerRoot: View {
     // store holds the live settings.
     let store: SettingsStore
@@ -154,6 +154,11 @@ struct TickerRoot: View {
     // noticeOrange backs the pinned line for a watch or an ordinary warning. It takes dark type, which reads
     // better on orange than white does.
     static let noticeOrange = Color(.sRGB, red: 0.98, green: 0.58, blue: 0.1)
+    // pillHeight is the height of the theme's backing pill, the headline's line with a point to spare above and
+    // below, as the menu bar clock draws its own.
+    static let pillHeight: CGFloat = 18
+    // pillInset keeps the theme's backing pill clear of the panel's ends.
+    static let pillInset: CGFloat = 2
     // pulse is how long each half of a flash takes. Three pulses take three seconds, well under the limit of three
     // flashes a second.
     static let pulse = 0.5
@@ -175,7 +180,11 @@ struct TickerRoot: View {
         }
         .background {
             ZStack {
-                if strip, !alarm {
+                if let backing = store.theme?.tickerBacking, !alarm {
+                    Capsule().fill(backing.color)
+                        .frame(height: Self.pillHeight)
+                        .padding(.horizontal, Self.pillInset)
+                } else if strip, !alarm {
                     Rectangle().fill(.bar)
                         .overlay(alignment: .bottom) {
                             Divider()
