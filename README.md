@@ -82,6 +82,20 @@ With Accessibility permission, Crier reads where the frontmost app's menus end, 
 the bar never covers them. Without it, Crier keeps a fixed amount of room for the menus, which you can
 change in Settings.
 
+### Theme colors
+
+A theme switcher can draw Crier in a theme's colors by posting the distributed notification
+`com.dcadolph.crier.themeColor` with a string object of five words: the ticker's text color or `auto`
+for the menu bar's own, a backing color for a pill behind the ticker or `none`, then the news window's
+background, text, and accent. Each color is `#RRGGBB`. An empty string clears the theme, and Crier
+ignores anything it cannot read. Your own settings stay as you set them, so clearing the theme puts
+them back.
+
+```sh
+# Cyan headlines on a black pill, with a dark news window.
+swift -e 'import Foundation; DistributedNotificationCenter.default().postNotificationName(.init("com.dcadolph.crier.themeColor"), object: "#5FE0F5 #000000 #030912 #E6F4F8 #30748C", userInfo: nil, deliverImmediately: true)'
+```
+
 ## Emergency mode
 
 Crier can watch for National Weather Service warnings where you are. It checks every two minutes for the
