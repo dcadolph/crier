@@ -53,7 +53,7 @@ struct NewsWindowView: View {
     var body: some View {
         VStack(spacing: 0) {
             NewsBand(
-                entries: news.entries, theme: store.settings.theme, mark: Self.bell,
+                entries: news.entries, theme: store.drawn.theme, mark: Self.bell,
                 rotation: .seconds(store.settings.rotationSeconds), speed: store.settings.speed
             )
             .padding(12)

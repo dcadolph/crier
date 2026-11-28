@@ -163,6 +163,10 @@ struct SettingsView: View {
                 Text("\(Int(store.settings.speed)) pt/s").monospacedDigit().frame(width: 60, alignment: .trailing)
             }
             .help("How fast headlines scroll, in points per second. The news band's ticker uses it too.")
+            if store.theme != nil {
+                Text(themeNote)
+                    .foregroundStyle(.secondary)
+            }
             Toggle("Match the menu bar's text color", isOn: matchBarBinding)
                 .help("Draw headlines in the menu bar's own text color, which follows the wallpaper and theme.")
             if let color = store.settings.tickerColor {
@@ -217,6 +221,9 @@ struct SettingsView: View {
         .formStyle(.grouped)
     }
 
+    // themeNote says a Mac-wide theme is drawing Crier, so the colors below wait until it is cleared.
+    private let themeNote = "Your Mac's theme is drawing Crier's colors now. These come back when the theme is cleared."
+
     // colorsPage picks the news band's colors and how long each page of top stories stays up.
     private var colorsPage: some View {
         Form {
@@ -226,6 +233,10 @@ struct SettingsView: View {
                 }
             }
             .help("The news band's colors. Match follows light and dark mode, Ink and Paper stay fixed.")
+            if store.theme != nil {
+                Text(themeNote)
+                    .foregroundStyle(.secondary)
+            }
             BandSample(theme: store.settings.theme)
             if store.settings.look == .custom {
                 ColorPicker("Background", selection: colorBinding(\.background), supportsOpacity: false)

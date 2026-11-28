@@ -92,7 +92,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         statusItem.watchBarAppearance { [weak self] appearance in
             self?.ticker?.barAppearance = appearance
         }
+        DistributedNotificationCenter.default().addObserver(
+            self, selector: #selector(themeLookChanged), name: Notification.Name(ThemeLook.notificationName),
+            object: nil, suspensionBehavior: .deliverImmediately
+        )
         news.start()
+    }
+
+    // themeLookChanged takes a theme look from a Mac-wide theme switch, or clears it on an empty message. Delivery
+    // is immediate, since a menu bar app is almost never the active app.
+    @objc private func themeLookChanged(_ notification: Notification) {
+        store.theme = ThemeLookMessage(notification.object as? String ?? "").updating(store.theme)
     }
 
     #if CRIER_DRILL

@@ -164,7 +164,7 @@ struct TickerRoot: View {
         let alarm = siren.tier >= .red
         TickerView(
             entries: news.entries, speed: store.settings.speed,
-            color: alarm ? .white : store.settings.tickerColor?.color, offset: strip ? offset + 8 : offset,
+            color: alarm ? .white : store.drawn.tickerColor?.color, offset: strip ? offset + 8 : offset,
             clock: clock
         )
         .padding(.horizontal, strip ? 8 : 0)
