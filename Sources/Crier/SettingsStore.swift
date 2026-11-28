@@ -20,11 +20,33 @@ final class SettingsStore {
         }
     }
 
+    // theme is the theme look drawn over the settings, or nil to draw them as chosen. It is remembered under its
+    // own key and never saved into settings, so clearing it puts back exactly what the reader had. A change runs
+    // the listeners with the settings as they are, so the ticker redraws in the new colors.
+    var theme: ThemeLook? {
+        didSet {
+            guard theme != oldValue else {
+                return
+            }
+            UserDefaults.standard.set(theme?.message ?? "", forKey: Self.themeKey)
+            for listener in listeners {
+                listener(settings)
+            }
+        }
+    }
+
+    // drawn is what the ticker and the band draw: the settings with the theme look over them, when one is held.
+    var drawn: Settings {
+        settings.drawn(with: theme)
+    }
+
     // listeners run after every change with the settings as they were before it.
     @ObservationIgnored private var listeners: [@MainActor (Settings) -> Void] = []
 
     // key is the user defaults key holding the encoded settings.
     private static let key = "settings"
+    // themeKey is the user defaults key holding the theme look's message.
+    private static let themeKey = "themeLook"
 
     // init loads saved settings, or the defaults when none are saved or they fail to decode.
     init() {
@@ -35,6 +57,7 @@ final class SettingsStore {
         } else {
             settings = Settings()
         }
+        theme = ThemeLookMessage(UserDefaults.standard.string(forKey: Self.themeKey) ?? "").updating(nil)
     }
 
     // onChange adds a listener that runs after every change with the previous settings.
